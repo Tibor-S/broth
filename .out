@@ -1,1 +1,9 @@
-Hello, world!
+Profile name is set to "${VP_DEFAULT}", but profile_file is unset. The profile will not be loaded.
+VUID-VkPipelineShaderStageCreateInfo-module-parameter(ERROR / SPEC): msgNum: -42869648 - Validation Error: [ VUID-VkPipelineShaderStageCreateInfo-module-parameter ] Object 0: handle = 0x150086400, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0xfd71dc70 | vkCreateGraphicsPipelines(): pCreateInfos[0].pStages[0].module Invalid VkShaderModule Object 0xcfef35000000000a. The Vulkan spec states: If module is not VK_NULL_HANDLE, module must be a valid VkShaderModule handle (https://vulkan.lunarg.com/doc/view/1.3.268.1/mac/1.3-extensions/vkspec.html#VUID-VkPipelineShaderStageCreateInfo-module-parameter)
+    Objects: 1
+        [0] 0x150086400, type: 1, name: NULL
+VUID-VkPipelineShaderStageCreateInfo-module-parameter(ERROR / SPEC): msgNum: -42869648 - Validation Error: [ VUID-VkPipelineShaderStageCreateInfo-module-parameter ] Object 0: handle = 0x150086400, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0xfd71dc70 | vkCreateGraphicsPipelines(): pCreateInfos[0].pStages[1].module Invalid VkShaderModule Object 0xec4bec000000000b. The Vulkan spec states: If module is not VK_NULL_HANDLE, module must be a valid VkShaderModule handle (https://vulkan.lunarg.com/doc/view/1.3.268.1/mac/1.3-extensions/vkspec.html#VUID-VkPipelineShaderStageCreateInfo-module-parameter)
+    Objects: 1
+        [0] 0x150086400, type: 1, name: NULL
+VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00606(ERROR / SPEC): msgNum: 592405142 - Validation Error: [ VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00606 ] | MessageID = 0x234f6296 | vkCreateGraphicsPipelines(): pCreateInfos[0].pColorBlendState->logicOpEnable is VK_TRUE, but the logicOp feature was not enabled. The Vulkan spec states: If the logicOp feature is not enabled, logicOpEnable must be VK_FALSE (https://vulkan.lunarg.com/doc/view/1.3.268.1/mac/1.3-extensions/vkspec.html#VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00606)
+    Objects: 0
