@@ -11,4 +11,8 @@ https://vulkan.lunarg.com/sdk/home
 
 ## MacOS
 
-Use `debug.sh`
+To debug:
+```Bash
+./compile_shaders.sh
+./debug.sh
+```
