@@ -6,6 +6,9 @@ use vulkanalia::{
 
 use crate::{app::AppData, vertex::Vertex};
 
+// TODO: Look into creating an interface specifying wether
+// TODO: the pipeline is 2D or 3D. Will use two different
+// TODO: shaders and vertex structs.
 pub unsafe fn create_pipeline(
     device: &Device,
     data: &mut AppData,
@@ -20,7 +23,6 @@ pub unsafe fn create_pipeline(
         .stage(vk::ShaderStageFlags::VERTEX)
         .module(vert_shader_module)
         .name(b"main\0");
-
     let frag_stage = vk::PipelineShaderStageCreateInfo::builder()
         .stage(vk::ShaderStageFlags::FRAGMENT)
         .module(frag_shader_module)
