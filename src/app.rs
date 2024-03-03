@@ -29,10 +29,11 @@ use crate::texture::{
     create_texture_image, create_texture_image_view,
     create_texture_sampler, TextureError,
 };
+use crate::vertex::SpaceDimension;
 use crate::{
     instance::{create_instance, InstanceError},
     validation::destroy_debug_utils_messenger_ext,
-    vertex::{create_vertex_buffer, Vertex, VertexError},
+    vertex::{create_vertex_buffer, Vertex3, VertexError},
     MAX_FRAMES_IN_FLIGHT,
 };
 use cgmath::{point3, vec2, vec3, Deg};
@@ -125,7 +126,7 @@ pub struct AppData {
     pub render_finished_semaphores: Vec<vk::Semaphore>,
     pub in_flight_fences: Vec<vk::Fence>,
     pub images_in_flight: Vec<vk::Fence>,
-    pub vertices: Vec<Vertex>,
+    pub vertices: Vec<Vertex3>,
     pub indices: Vec<u32>,
     pub vertex_buffer: vk::Buffer,
     pub vertex_buffer_memory: vk::DeviceMemory,
@@ -146,6 +147,7 @@ pub struct AppData {
     pub depth_image: vk::Image,
     pub depth_image_memory: vk::DeviceMemory,
     pub depth_image_view: vk::ImageView,
+    pub dimension: SpaceDimension,
 }
 
 impl App {
@@ -157,6 +159,7 @@ impl App {
         let mut data = AppData::default();
         let instance = create_instance(window, &entry, &mut data)?;
         data.surface = create_surface(&instance, &window, &window)?;
+        data.dimension = SpaceDimension::D3;
         pick_physical_device(&instance, &mut data)?;
         let device =
             create_logical_device(&entry, &instance, &mut data)?;
@@ -493,7 +496,7 @@ fn load_model(data: &mut AppData) -> Result<()> {
             let pos_offset = (3 * index) as usize;
             let tex_coord_offset = (2 * index) as usize;
 
-            let vertex = Vertex {
+            let vertex = Vertex3 {
                 pos: vec3(
                     model.mesh.positions[pos_offset],
                     model.mesh.positions[pos_offset + 1],

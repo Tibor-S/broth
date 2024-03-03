@@ -14,7 +14,14 @@ pub unsafe fn create_vertex_buffer(
     device: &Device,
     data: &mut AppData,
 ) -> Result<()> {
-    let size = (size_of::<Vertex>() * data.vertices.len()) as u64;
+    let size = match data.dimension {
+        SpaceDimension::D3 => {
+            (size_of::<Vertex3>() * data.vertices.len()) as u64
+        }
+        SpaceDimension::D2 => {
+            (size_of::<Vertex2>() * data.vertices.len()) as u64
+        }
+    };
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
@@ -63,13 +70,13 @@ pub unsafe fn create_vertex_buffer(
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
-pub struct Vertex {
+pub struct Vertex3 {
     pub pos: Vec3,
     pub color: Vec3,
     pub tex_coord: Vec2,
 }
 
-impl Vertex {
+impl Vertex3 {
     #![allow(dead_code)]
     const fn new(pos: Vec3, color: Vec3, tex_coord: Vec2) -> Self {
         Self {
@@ -83,7 +90,7 @@ impl Vertex {
     {
         vk::VertexInputBindingDescription::builder()
             .binding(0)
-            .stride(size_of::<Vertex>() as u32)
+            .stride(size_of::<Vertex3>() as u32)
             .input_rate(vk::VertexInputRate::VERTEX)
             .build()
     }
@@ -114,7 +121,7 @@ impl Vertex {
         [pos, color, tex_coord]
     }
 }
-impl PartialEq for Vertex {
+impl PartialEq for Vertex3 {
     fn eq(&self, other: &Self) -> bool {
         self.pos == other.pos
             && self.color == other.color
@@ -122,13 +129,88 @@ impl PartialEq for Vertex {
     }
 }
 
-impl Eq for Vertex {}
+impl Eq for Vertex3 {}
 
-impl Hash for Vertex {
+impl Hash for Vertex3 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.pos[0].to_bits().hash(state);
         self.pos[1].to_bits().hash(state);
         self.pos[2].to_bits().hash(state);
+        self.color[0].to_bits().hash(state);
+        self.color[1].to_bits().hash(state);
+        self.color[2].to_bits().hash(state);
+        self.tex_coord[0].to_bits().hash(state);
+        self.tex_coord[1].to_bits().hash(state);
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct Vertex2 {
+    pub pos: Vec2,
+    pub color: Vec3,
+    pub tex_coord: Vec2,
+}
+
+impl Vertex2 {
+    #![allow(dead_code)]
+    const fn new(pos: Vec2, color: Vec3, tex_coord: Vec2) -> Self {
+        Self {
+            pos,
+            color,
+            tex_coord,
+        }
+    }
+
+    pub fn binding_description() -> vk::VertexInputBindingDescription
+    {
+        vk::VertexInputBindingDescription::builder()
+            .binding(0)
+            .stride(size_of::<Vertex2>() as u32)
+            .input_rate(vk::VertexInputRate::VERTEX)
+            .build()
+    }
+
+    pub fn attribute_descriptions(
+    ) -> [vk::VertexInputAttributeDescription; 3] {
+        let pos = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(0)
+            .format(vk::Format::R32G32_SFLOAT)
+            .offset(0)
+            .build();
+        let color = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(1)
+            .format(vk::Format::R32G32B32_SFLOAT)
+            .offset(size_of::<Vec2>() as u32)
+            .build();
+        let tex_coord =
+            vk::VertexInputAttributeDescription::builder()
+                .binding(0)
+                .location(2)
+                .format(vk::Format::R32G32_SFLOAT)
+                .offset(
+                    (size_of::<Vec2>() + size_of::<Vec3>()) as u32,
+                )
+                .build();
+        [pos, color, tex_coord]
+    }
+}
+impl PartialEq for Vertex2 {
+    fn eq(&self, other: &Self) -> bool {
+        self.pos == other.pos
+            && self.color == other.color
+            && self.tex_coord == other.tex_coord
+    }
+}
+
+impl Eq for Vertex2 {}
+
+impl Hash for Vertex2 {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.pos[0].to_bits().hash(state);
+        self.pos[1].to_bits().hash(state);
         self.color[0].to_bits().hash(state);
         self.color[1].to_bits().hash(state);
         self.color[2].to_bits().hash(state);
@@ -143,5 +225,16 @@ pub enum VertexError {
     VkErrorCode(#[from] ErrorCode),
     #[error(transparent)]
     BufferError(#[from] BufferError),
+}
+#[derive(Debug, Clone, Copy)]
+pub enum SpaceDimension {
+    #[allow(dead_code)]
+    D3,
+    D2,
+}
+impl Default for SpaceDimension {
+    fn default() -> Self {
+        SpaceDimension::D3
+    }
 }
 type Result<T> = std::result::Result<T, VertexError>;

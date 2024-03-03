@@ -4,7 +4,7 @@ use vulkanalia::{
     Device,
 };
 
-use crate::{app::AppData, vertex::Vertex};
+use crate::{app::AppData, vertex::Vertex3};
 
 // TODO: Look into creating an interface specifying wether
 // TODO: the pipeline is 2D or 3D. Will use two different
@@ -28,8 +28,8 @@ pub unsafe fn create_pipeline(
         .module(frag_shader_module)
         .name(b"main\0");
 
-    let binding_descriptions = &[Vertex::binding_description()];
-    let attribute_descriptions = Vertex::attribute_descriptions();
+    let binding_descriptions = &[Vertex3::binding_description()];
+    let attribute_descriptions = Vertex3::attribute_descriptions();
     let vertex_input_state =
         vk::PipelineVertexInputStateCreateInfo::builder()
             .vertex_binding_descriptions(binding_descriptions)
@@ -48,6 +48,7 @@ pub unsafe fn create_pipeline(
         .min_depth(0.0)
         .max_depth(1.0);
 
+    // TODO: Wtf is a scissor?
     let scissor = vk::Rect2D::builder()
         .offset(vk::Offset2D { x: 0, y: 0 })
         .extent(data.swapchain_extent);
