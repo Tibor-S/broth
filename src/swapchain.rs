@@ -200,6 +200,29 @@ pub unsafe fn create_framebuffers(
     Ok(())
 }
 
+pub unsafe fn create_framebuffers_2d(
+    device: &Device,
+    data: &mut AppData,
+) -> Result<()> {
+    data.framebuffers_2d = data
+        .swapchain_image_views
+        .iter()
+        .map(|i| {
+            let attachments = &[data.color_image_view, *i];
+            let create_info = vk::FramebufferCreateInfo::builder()
+                .render_pass(data.render_pass_2d)
+                .attachments(attachments)
+                .width(data.swapchain_extent.width)
+                .height(data.swapchain_extent.height)
+                .layers(1);
+
+            device.create_framebuffer(&create_info, None)
+        })
+        .collect::<VkResult<Vec<_>>>()?;
+
+    Ok(())
+}
+
 pub unsafe fn create_sync_objects(
     device: &Device,
     data: &mut AppData,

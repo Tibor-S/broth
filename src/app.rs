@@ -2,26 +2,31 @@ use std::fs::File;
 use std::mem::size_of;
 
 use crate::buffer::{
-    create_index_buffer, create_uniform_buffers, BufferError, Mat4,
-    UniformBufferObject,
+    create_index_buffer, create_index_buffer_2d,
+    create_uniform_buffers, BufferError, Mat4, UniformBufferObject,
 };
 use crate::color::{create_color_objects, ColorError};
 use crate::command::{
-    create_command_buffers, create_command_pool, CommandError,
+    create_command_buffers, create_command_buffers_2d,
+    create_command_pool, CommandError,
 };
 use crate::descriptor::{
     create_descriptor_pool, create_descriptor_set_layout,
-    create_descriptor_sets, DescriptorError,
+    create_descriptor_set_layout_2d, create_descriptor_sets,
+    DescriptorError,
 };
 use crate::device::{
     create_logical_device, pick_physical_device, DeviceError,
 };
-use crate::pipeline::{create_pipeline, PipelineError};
+use crate::pipeline::{
+    create_pipeline, create_pipeline_2d, PipelineError,
+};
 use crate::render_pass::{
-    create_depth_objects, create_render_pass, RenderPassError,
+    create_depth_objects, create_render_pass, create_render_pass_2d,
+    RenderPassError,
 };
 use crate::swapchain::{
-    create_framebuffers, create_swapchain,
+    create_framebuffers, create_framebuffers_2d, create_swapchain,
     create_swapchain_image_views, create_sync_objects,
     SwapchainError,
 };
@@ -29,7 +34,9 @@ use crate::texture::{
     create_texture_image, create_texture_image_view,
     create_texture_sampler, TextureError,
 };
-use crate::vertex::SpaceDimension;
+use crate::vertex::{
+    create_vertex_buffer_2d, SpaceDimension, Vertex2,
+};
 use crate::{
     instance::{create_instance, InstanceError},
     validation::destroy_debug_utils_messenger_ext,
@@ -116,22 +123,34 @@ pub struct AppData {
     pub swapchain_extent: vk::Extent2D,
     pub swapchain_image_views: Vec<vk::ImageView>,
     pub render_pass: vk::RenderPass,
+    pub render_pass_2d: vk::RenderPass,
     pub pipeline_layout: vk::PipelineLayout,
+    pub pipeline_layout_2d: vk::PipelineLayout,
+    pub descriptor_set_layout_2d: vk::DescriptorSetLayout,
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub pipeline: vk::Pipeline,
+    pub pipeline_2d: vk::Pipeline,
     pub framebuffers: Vec<vk::Framebuffer>,
+    pub framebuffers_2d: Vec<vk::Framebuffer>,
     pub command_pool: vk::CommandPool,
     pub command_buffers: Vec<vk::CommandBuffer>,
+    pub command_buffers_2d: Vec<vk::CommandBuffer>,
     pub image_available_semaphores: Vec<vk::Semaphore>,
     pub render_finished_semaphores: Vec<vk::Semaphore>,
     pub in_flight_fences: Vec<vk::Fence>,
     pub images_in_flight: Vec<vk::Fence>,
     pub vertices: Vec<Vertex3>,
+    pub vertices_2d: Vec<Vertex2>,
     pub indices: Vec<u32>,
+    pub indices_2d: Vec<u32>,
     pub vertex_buffer: vk::Buffer,
+    pub vertex_buffer_2d: vk::Buffer,
     pub vertex_buffer_memory: vk::DeviceMemory,
+    pub vertex_buffer_memory_2d: vk::DeviceMemory,
     pub index_buffer: vk::Buffer,
+    pub index_buffer_2d: vk::Buffer,
     pub index_buffer_memory: vk::DeviceMemory,
+    pub index_buffer_memory_2d: vk::DeviceMemory,
     pub uniform_buffers: Vec<vk::Buffer>,
     pub uniform_buffers_memory: Vec<vk::DeviceMemory>,
     pub descriptor_pool: vk::DescriptorPool,
@@ -165,23 +184,31 @@ impl App {
             create_logical_device(&entry, &instance, &mut data)?;
         create_swapchain(window, &instance, &device, &mut data)?;
         create_swapchain_image_views(&device, &mut data)?;
-        create_render_pass(&instance, &device, &mut data)?;
-        create_descriptor_set_layout(&device, &mut data)?;
-        create_pipeline(&device, &mut data)?;
+        // create_render_pass(&instance, &device, &mut data)?;
+        create_render_pass_2d(&instance, &device, &mut data)?;
+        // create_descriptor_set_layout(&device, &mut data)?;
+        create_descriptor_set_layout_2d(&device, &mut data)?;
+        // create_pipeline(&device, &mut data)?;
+        create_pipeline_2d(&device, &mut data)?;
         create_command_pool(&instance, &device, &mut data)?;
         create_color_objects(&instance, &device, &mut data)?;
         create_depth_objects(&instance, &device, &mut data)?;
-        create_framebuffers(&device, &mut data)?;
+        // create_framebuffers(&device, &mut data)?;
+        create_framebuffers_2d(&device, &mut data)?;
         create_texture_image(&instance, &device, &mut data)?;
         create_texture_image_view(&device, &mut data)?;
         create_texture_sampler(&device, &mut data)?;
-        load_model(&mut data)?;
-        create_vertex_buffer(&instance, &device, &mut data)?;
-        create_index_buffer(&instance, &device, &mut data)?;
+        // load_model(&mut data)?;
+        vertices_2d(&mut data)?;
+        // create_vertex_buffer(&instance, &device, &mut data)?;
+        create_vertex_buffer_2d(&instance, &device, &mut data)?;
+        // create_index_buffer(&instance, &device, &mut data)?;
+        create_index_buffer_2d(&instance, &device, &mut data)?;
         create_uniform_buffers(&instance, &device, &mut data)?;
         create_descriptor_pool(&device, &mut data)?;
         create_descriptor_sets(&device, &mut data)?;
-        create_command_buffers(&device, &mut data)?;
+        // create_command_buffers(&device, &mut data)?;
+        create_command_buffers_2d(&device, &mut data)?;
         create_sync_objects(&device, &mut data)?;
         Ok(Self {
             _entry: entry,
@@ -262,12 +289,18 @@ impl App {
             &mut self.data,
         )?;
         create_swapchain_image_views(&self.device, &mut self.data)?;
-        create_render_pass(
+        // create_render_pass(
+        //     &self.instance,
+        //     &self.device,
+        //     &mut self.data,
+        // )?;
+        create_render_pass_2d(
             &self.instance,
             &self.device,
             &mut self.data,
         )?;
-        create_pipeline(&self.device, &mut self.data)?;
+        // create_pipeline(&self.device, &mut self.data)?;
+        create_pipeline_2d(&self.device, &mut self.data)?;
         create_color_objects(
             &self.instance,
             &self.device,
@@ -278,7 +311,8 @@ impl App {
             &self.device,
             &mut self.data,
         )?;
-        create_framebuffers(&self.device, &mut self.data)?;
+        // create_framebuffers(&self.device, &mut self.data)?;
+        create_framebuffers_2d(&self.device, &mut self.data)?;
         create_uniform_buffers(
             &self.instance,
             &self.device,
@@ -286,7 +320,8 @@ impl App {
         )?;
         create_descriptor_pool(&self.device, &mut self.data)?;
         create_descriptor_sets(&self.device, &mut self.data)?;
-        create_command_buffers(&self.device, &mut self.data)?;
+        // create_command_buffers(&self.device, &mut self.data)?;
+        create_command_buffers_2d(&self.device, &mut self.data)?;
         Ok(())
     }
 
@@ -328,8 +363,10 @@ impl App {
             &[self.data.image_available_semaphores[self.frame]];
         let wait_stages =
             &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+        // let command_buffers =
+        //     &[self.data.command_buffers[image_index as usize]];
         let command_buffers =
-            &[self.data.command_buffers[image_index as usize]];
+            &[self.data.command_buffers_2d[image_index as usize]];
         let signal_semaphores =
             &[self.data.render_finished_semaphores[self.frame]];
         let submit_info = vk::SubmitInfo::builder()
@@ -395,12 +432,18 @@ impl App {
             .iter()
             .for_each(|s| self.device.destroy_semaphore(*s, None));
 
-        self.device.free_memory(self.data.index_buffer_memory, None);
-        self.device.destroy_buffer(self.data.index_buffer, None);
-
+        // self.device.free_memory(self.data.index_buffer_memory, None);
+        // self.device.destroy_buffer(self.data.index_buffer, None);
         self.device
-            .free_memory(self.data.vertex_buffer_memory, None);
-        self.device.destroy_buffer(self.data.vertex_buffer, None);
+            .free_memory(self.data.index_buffer_memory_2d, None);
+        self.device.destroy_buffer(self.data.index_buffer_2d, None);
+
+        // self.device
+        //     .free_memory(self.data.vertex_buffer_memory, None);
+        // self.device.destroy_buffer(self.data.vertex_buffer, None);
+        self.device
+            .free_memory(self.data.vertex_buffer_memory_2d, None);
+        self.device.destroy_buffer(self.data.vertex_buffer_2d, None);
 
         self.device.destroy_sampler(self.data.texture_sampler, None);
         self.device
@@ -411,8 +454,12 @@ impl App {
 
         self.device
             .destroy_command_pool(self.data.command_pool, None);
+        // self.device.destroy_descriptor_set_layout(
+        //     self.data.descriptor_set_layout,
+        //     None,
+        // );
         self.device.destroy_descriptor_set_layout(
-            self.data.descriptor_set_layout,
+            self.data.descriptor_set_layout_2d,
             None,
         );
 
@@ -428,9 +475,13 @@ impl App {
     }
 
     unsafe fn destroy_swapchain(&mut self) {
+        // self.device.free_command_buffers(
+        //     self.data.command_pool,
+        //     &self.data.command_buffers,
+        // );
         self.device.free_command_buffers(
             self.data.command_pool,
-            &self.data.command_buffers,
+            &self.data.command_buffers_2d,
         );
 
         self.device
@@ -454,15 +505,26 @@ impl App {
         self.device.free_memory(self.data.color_image_memory, None);
         self.device.destroy_image(self.data.color_image, None);
 
+        // self.data
+        //     .framebuffers
+        //     .iter()
+        //     .for_each(|f| self.device.destroy_framebuffer(*f, None));
         self.data
-            .framebuffers
+            .framebuffers_2d
             .iter()
             .for_each(|f| self.device.destroy_framebuffer(*f, None));
 
-        self.device.destroy_pipeline(self.data.pipeline, None);
+        // self.device.destroy_pipeline(self.data.pipeline, None);
+        self.device.destroy_pipeline(self.data.pipeline_2d, None);
+        // self.device
+        //     .destroy_pipeline_layout(self.data.pipeline_layout, None);
+        self.device.destroy_pipeline_layout(
+            self.data.pipeline_layout_2d,
+            None,
+        );
+        // self.device.destroy_render_pass(self.data.render_pass, None);
         self.device
-            .destroy_pipeline_layout(self.data.pipeline_layout, None);
-        self.device.destroy_render_pass(self.data.render_pass, None);
+            .destroy_render_pass(self.data.render_pass_2d, None);
 
         self.data
             .swapchain_image_views
@@ -519,5 +581,32 @@ fn load_model(data: &mut AppData) -> Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+fn vertices_2d(data: &mut AppData) -> Result<()> {
+    data.vertices_2d = vec![
+        Vertex2 {
+            pos: vec2(-0.5, -0.5),
+            color: vec3(1.0, 0.0, 0.0),
+            tex_coord: vec2(0.0, 0.0),
+        },
+        Vertex2 {
+            pos: vec2(0.5, -0.5),
+            color: vec3(0.0, 1.0, 0.0),
+            tex_coord: vec2(1.0, 0.0),
+        },
+        Vertex2 {
+            pos: vec2(0.5, 0.5),
+            color: vec3(0.0, 0.0, 1.0),
+            tex_coord: vec2(1.0, 1.0),
+        },
+        Vertex2 {
+            pos: vec2(-0.5, 0.5),
+            color: vec3(1.0, 1.0, 1.0),
+            tex_coord: vec2(0.0, 1.0),
+        },
+    ];
+    data.indices_2d = vec![0, 2, 1, 3, 2, 0];
     Ok(())
 }

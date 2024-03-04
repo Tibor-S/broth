@@ -14,14 +14,7 @@ pub unsafe fn create_vertex_buffer(
     device: &Device,
     data: &mut AppData,
 ) -> Result<()> {
-    let size = match data.dimension {
-        SpaceDimension::D3 => {
-            (size_of::<Vertex3>() * data.vertices.len()) as u64
-        }
-        SpaceDimension::D2 => {
-            (size_of::<Vertex2>() * data.vertices.len()) as u64
-        }
-    };
+    let size = (size_of::<Vertex3>() * data.vertices.len()) as u64;
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
@@ -60,6 +53,58 @@ pub unsafe fn create_vertex_buffer(
 
     data.vertex_buffer = vertex_buffer;
     data.vertex_buffer_memory = vertex_buffer_memory;
+
+    copy_buffer(device, data, staging_buffer, vertex_buffer, size)?;
+    device.destroy_buffer(staging_buffer, None);
+    device.free_memory(staging_buffer_memory, None);
+
+    Ok(())
+}
+
+pub unsafe fn create_vertex_buffer_2d(
+    instance: &Instance,
+    device: &Device,
+    data: &mut AppData,
+) -> Result<()> {
+    let size = (size_of::<Vertex2>() * data.vertices_2d.len()) as u64;
+
+    let (staging_buffer, staging_buffer_memory) = create_buffer(
+        instance,
+        device,
+        data,
+        size,
+        vk::BufferUsageFlags::TRANSFER_SRC,
+        vk::MemoryPropertyFlags::HOST_COHERENT
+            | vk::MemoryPropertyFlags::HOST_VISIBLE,
+    )?;
+
+    let memory = device.map_memory(
+        staging_buffer_memory,
+        0,
+        size,
+        vk::MemoryMapFlags::empty(),
+    )?;
+
+    memcpy(
+        data.vertices_2d.as_ptr(),
+        memory.cast(),
+        data.vertices_2d.len(),
+    );
+
+    device.unmap_memory(staging_buffer_memory);
+
+    let (vertex_buffer, vertex_buffer_memory) = create_buffer(
+        instance,
+        device,
+        data,
+        size,
+        vk::BufferUsageFlags::TRANSFER_DST
+            | vk::BufferUsageFlags::VERTEX_BUFFER,
+        vk::MemoryPropertyFlags::DEVICE_LOCAL,
+    )?;
+
+    data.vertex_buffer_2d = vertex_buffer;
+    data.vertex_buffer_memory_2d = vertex_buffer_memory;
 
     copy_buffer(device, data, staging_buffer, vertex_buffer, size)?;
     device.destroy_buffer(staging_buffer, None);
