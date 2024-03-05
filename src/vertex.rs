@@ -14,7 +14,8 @@ pub unsafe fn create_vertex_buffer(
     device: &Device,
     data: &mut AppData,
 ) -> Result<()> {
-    let size = (size_of::<Vertex3>() * data.vertices.len()) as u64;
+    let size = (size_of::<Vertex3>()
+        * data.render_object.vertices.len()) as u64;
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
@@ -34,9 +35,9 @@ pub unsafe fn create_vertex_buffer(
     )?;
 
     memcpy(
-        data.vertices.as_ptr(),
+        data.render_object.vertices.as_ptr(),
         memory.cast(),
-        data.vertices.len(),
+        data.render_object.vertices.len(),
     );
 
     device.unmap_memory(staging_buffer_memory);
@@ -51,8 +52,8 @@ pub unsafe fn create_vertex_buffer(
         vk::MemoryPropertyFlags::DEVICE_LOCAL,
     )?;
 
-    data.vertex_buffer = vertex_buffer;
-    data.vertex_buffer_memory = vertex_buffer_memory;
+    data.render_object.vertex_buffer = vertex_buffer;
+    data.render_object.vertex_buffer_memory = vertex_buffer_memory;
 
     copy_buffer(device, data, staging_buffer, vertex_buffer, size)?;
     device.destroy_buffer(staging_buffer, None);
@@ -66,7 +67,8 @@ pub unsafe fn create_vertex_buffer_2d(
     device: &Device,
     data: &mut AppData,
 ) -> Result<()> {
-    let size = (size_of::<Vertex2>() * data.vertices_2d.len()) as u64;
+    let size = (size_of::<Vertex2>()
+        * data.render_object.vertices_2d.len()) as u64;
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
@@ -86,9 +88,9 @@ pub unsafe fn create_vertex_buffer_2d(
     )?;
 
     memcpy(
-        data.vertices_2d.as_ptr(),
+        data.render_object.vertices_2d.as_ptr(),
         memory.cast(),
-        data.vertices_2d.len(),
+        data.render_object.vertices_2d.len(),
     );
 
     device.unmap_memory(staging_buffer_memory);
@@ -103,8 +105,8 @@ pub unsafe fn create_vertex_buffer_2d(
         vk::MemoryPropertyFlags::DEVICE_LOCAL,
     )?;
 
-    data.vertex_buffer_2d = vertex_buffer;
-    data.vertex_buffer_memory_2d = vertex_buffer_memory;
+    data.render_object.vertex_buffer_2d = vertex_buffer;
+    data.render_object.vertex_buffer_memory_2d = vertex_buffer_memory;
 
     copy_buffer(device, data, staging_buffer, vertex_buffer, size)?;
     device.destroy_buffer(staging_buffer, None);

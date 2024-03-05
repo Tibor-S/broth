@@ -18,7 +18,6 @@ pub unsafe fn create_command_pool(
         data,
         data.physical_device,
     )?;
-
     let info = vk::CommandPoolCreateInfo::builder()
         .flags(vk::CommandPoolCreateFlags::empty()) // * Optional.
         .queue_family_index(indices.graphics);
@@ -39,11 +38,12 @@ pub unsafe fn create_command_buffers(
         .level(vk::CommandBufferLevel::PRIMARY)
         .command_buffer_count(data.framebuffers.len() as u32);
 
-    data.command_buffers =
+    data.render_object.command_buffers =
         device.allocate_command_buffers(&allocate_info)?;
 
     // Commands
-    for (i, command_buffer) in data.command_buffers.iter().enumerate()
+    for (i, command_buffer) in
+        data.render_object.command_buffers.iter().enumerate()
     {
         let info = vk::CommandBufferBeginInfo::builder();
 
@@ -68,7 +68,7 @@ pub unsafe fn create_command_buffers(
 
         let clear_values = &[color_clear_value, depth_clear_value];
         let info = vk::RenderPassBeginInfo::builder()
-            .render_pass(data.render_pass)
+            .render_pass(data.render_object.render_pass)
             .framebuffer(data.framebuffers[i])
             .render_area(render_area)
             .clear_values(clear_values);
@@ -81,31 +81,31 @@ pub unsafe fn create_command_buffers(
         device.cmd_bind_pipeline(
             *command_buffer,
             vk::PipelineBindPoint::GRAPHICS,
-            data.pipeline,
+            data.render_object.pipeline,
         );
         device.cmd_bind_vertex_buffers(
             *command_buffer,
             0,
-            &[data.vertex_buffer],
+            &[data.render_object.vertex_buffer],
             &[0],
         );
         device.cmd_bind_index_buffer(
             *command_buffer,
-            data.index_buffer,
+            data.render_object.index_buffer,
             0,
             vk::IndexType::UINT32,
         );
         device.cmd_bind_descriptor_sets(
             *command_buffer,
             vk::PipelineBindPoint::GRAPHICS,
-            data.pipeline_layout,
+            data.render_object.pipeline_layout,
             0,
             &[data.descriptor_sets[i]],
             &[],
         );
         device.cmd_draw_indexed(
             *command_buffer,
-            data.indices.len() as u32,
+            data.render_object.indices.len() as u32,
             1,
             0,
             0,
@@ -115,7 +115,7 @@ pub unsafe fn create_command_buffers(
 
         device.end_command_buffer(*command_buffer)?;
     }
-
+    log::debug!("!!!\n");
     Ok(())
 }
 
@@ -128,14 +128,14 @@ pub unsafe fn create_command_buffers_2d(
     let allocate_info = vk::CommandBufferAllocateInfo::builder()
         .command_pool(data.command_pool)
         .level(vk::CommandBufferLevel::PRIMARY)
-        .command_buffer_count(data.framebuffers_2d.len() as u32);
+        .command_buffer_count(data.framebuffers.len() as u32);
 
-    data.command_buffers_2d =
+    data.render_object.command_buffers_2d =
         device.allocate_command_buffers(&allocate_info)?;
 
     // Commands
     for (i, command_buffer) in
-        data.command_buffers_2d.iter().enumerate()
+        data.render_object.command_buffers_2d.iter().enumerate()
     {
         let info = vk::CommandBufferBeginInfo::builder();
 
@@ -153,8 +153,8 @@ pub unsafe fn create_command_buffers_2d(
 
         let clear_values = &[color_clear_value];
         let info = vk::RenderPassBeginInfo::builder()
-            .render_pass(data.render_pass_2d)
-            .framebuffer(data.framebuffers_2d[i])
+            .render_pass(data.render_object.render_pass_2d)
+            .framebuffer(data.framebuffers[i])
             .render_area(render_area)
             .clear_values(clear_values);
 
@@ -166,31 +166,31 @@ pub unsafe fn create_command_buffers_2d(
         device.cmd_bind_pipeline(
             *command_buffer,
             vk::PipelineBindPoint::GRAPHICS,
-            data.pipeline_2d,
+            data.render_object.pipeline_2d,
         );
         device.cmd_bind_vertex_buffers(
             *command_buffer,
             0,
-            &[data.vertex_buffer_2d],
+            &[data.render_object.vertex_buffer_2d],
             &[0],
         );
         device.cmd_bind_index_buffer(
             *command_buffer,
-            data.index_buffer_2d,
+            data.render_object.index_buffer_2d,
             0,
             vk::IndexType::UINT32,
         );
         device.cmd_bind_descriptor_sets(
             *command_buffer,
             vk::PipelineBindPoint::GRAPHICS,
-            data.pipeline_layout_2d,
+            data.render_object.pipeline_layout_2d,
             0,
             &[data.descriptor_sets[i]],
             &[],
         );
         device.cmd_draw_indexed(
             *command_buffer,
-            data.indices_2d.len() as u32,
+            data.render_object.indices_2d.len() as u32,
             1,
             0,
             0,

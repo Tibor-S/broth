@@ -10,6 +10,7 @@ mod instance;
 mod memory;
 mod pipeline;
 mod queue;
+mod render;
 mod render_pass;
 mod swapchain;
 mod texture;

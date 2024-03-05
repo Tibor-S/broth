@@ -13,13 +13,16 @@ use crate::command::{
 use crate::descriptor::{
     create_descriptor_pool, create_descriptor_set_layout,
     create_descriptor_set_layout_2d, create_descriptor_sets,
-    DescriptorError,
+    create_descriptor_sets_2d, DescriptorError,
 };
 use crate::device::{
     create_logical_device, pick_physical_device, DeviceError,
 };
 use crate::pipeline::{
     create_pipeline, create_pipeline_2d, PipelineError,
+};
+use crate::render::{
+    RenderDimension, RenderObject, RenderObjectError,
 };
 use crate::render_pass::{
     create_depth_objects, create_render_pass, create_render_pass_2d,
@@ -89,6 +92,8 @@ pub enum AppError {
     VertexError(#[from] VertexError),
     #[error(transparent)]
     CommandError(#[from] CommandError),
+    #[error(transparent)]
+    RenderObjectError(#[from] RenderObjectError),
     #[error("Failed to open file with error: {0}.")]
     FileOpenError(String),
     #[error("{0:?}")]
@@ -122,37 +127,11 @@ pub struct AppData {
     pub swapchain_format: vk::Format,
     pub swapchain_extent: vk::Extent2D,
     pub swapchain_image_views: Vec<vk::ImageView>,
-    pub render_pass: vk::RenderPass,
-    pub render_pass_2d: vk::RenderPass,
-    pub pipeline_layout: vk::PipelineLayout,
-    pub pipeline_layout_2d: vk::PipelineLayout,
-    pub descriptor_set_layout_2d: vk::DescriptorSetLayout,
-    pub descriptor_set_layout: vk::DescriptorSetLayout,
-    pub pipeline: vk::Pipeline,
-    pub pipeline_2d: vk::Pipeline,
-    pub framebuffers: Vec<vk::Framebuffer>,
-    pub framebuffers_2d: Vec<vk::Framebuffer>,
     pub command_pool: vk::CommandPool,
-    pub command_buffers: Vec<vk::CommandBuffer>,
-    pub command_buffers_2d: Vec<vk::CommandBuffer>,
     pub image_available_semaphores: Vec<vk::Semaphore>,
     pub render_finished_semaphores: Vec<vk::Semaphore>,
     pub in_flight_fences: Vec<vk::Fence>,
     pub images_in_flight: Vec<vk::Fence>,
-    pub vertices: Vec<Vertex3>,
-    pub vertices_2d: Vec<Vertex2>,
-    pub indices: Vec<u32>,
-    pub indices_2d: Vec<u32>,
-    pub vertex_buffer: vk::Buffer,
-    pub vertex_buffer_2d: vk::Buffer,
-    pub vertex_buffer_memory: vk::DeviceMemory,
-    pub vertex_buffer_memory_2d: vk::DeviceMemory,
-    pub index_buffer: vk::Buffer,
-    pub index_buffer_2d: vk::Buffer,
-    pub index_buffer_memory: vk::DeviceMemory,
-    pub index_buffer_memory_2d: vk::DeviceMemory,
-    pub uniform_buffers: Vec<vk::Buffer>,
-    pub uniform_buffers_memory: Vec<vk::DeviceMemory>,
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
     pub mip_levels: u32,
@@ -167,6 +146,8 @@ pub struct AppData {
     pub depth_image_memory: vk::DeviceMemory,
     pub depth_image_view: vk::ImageView,
     pub dimension: SpaceDimension,
+    pub render_object: RenderObject,
+    pub framebuffers: Vec<vk::Framebuffer>,
 }
 
 impl App {
@@ -178,37 +159,39 @@ impl App {
         let mut data = AppData::default();
         let instance = create_instance(window, &entry, &mut data)?;
         data.surface = create_surface(&instance, &window, &window)?;
-        data.dimension = SpaceDimension::D3;
+        data.render_object.render_dimension = RenderDimension::D3;
         pick_physical_device(&instance, &mut data)?;
         let device =
             create_logical_device(&entry, &instance, &mut data)?;
         create_swapchain(window, &instance, &device, &mut data)?;
         create_swapchain_image_views(&device, &mut data)?;
-        // create_render_pass(&instance, &device, &mut data)?;
-        create_render_pass_2d(&instance, &device, &mut data)?;
-        // create_descriptor_set_layout(&device, &mut data)?;
-        create_descriptor_set_layout_2d(&device, &mut data)?;
-        // create_pipeline(&device, &mut data)?;
-        create_pipeline_2d(&device, &mut data)?;
+        create_render_pass(&instance, &device, &mut data)?;
+        // create_render_pass_2d(&instance, &device, &mut data)?;
+        create_descriptor_set_layout(&device, &mut data)?;
+        // create_descriptor_set_layout_2d(&device, &mut data)?;
+        create_pipeline(&device, &mut data)?;
+        // create_pipeline_2d(&device, &mut data)?;
         create_command_pool(&instance, &device, &mut data)?;
         create_color_objects(&instance, &device, &mut data)?;
         create_depth_objects(&instance, &device, &mut data)?;
-        // create_framebuffers(&device, &mut data)?;
-        create_framebuffers_2d(&device, &mut data)?;
+        create_framebuffers(&device, &mut data)?;
+        // create_framebuffers_2d(&device, &mut data)?;
         create_texture_image(&instance, &device, &mut data)?;
         create_texture_image_view(&device, &mut data)?;
         create_texture_sampler(&device, &mut data)?;
-        // load_model(&mut data)?;
-        vertices_2d(&mut data)?;
-        // create_vertex_buffer(&instance, &device, &mut data)?;
-        create_vertex_buffer_2d(&instance, &device, &mut data)?;
-        // create_index_buffer(&instance, &device, &mut data)?;
-        create_index_buffer_2d(&instance, &device, &mut data)?;
+        load_model(&mut data)?;
+        // vertices_2d(&mut data)?;
+        create_vertex_buffer(&instance, &device, &mut data)?;
+        // create_vertex_buffer_2d(&instance, &device, &mut data)?;
+        create_index_buffer(&instance, &device, &mut data)?;
+        // create_index_buffer_2d(&instance, &device, &mut data)?;
         create_uniform_buffers(&instance, &device, &mut data)?;
         create_descriptor_pool(&device, &mut data)?;
         create_descriptor_sets(&device, &mut data)?;
-        // create_command_buffers(&device, &mut data)?;
-        create_command_buffers_2d(&device, &mut data)?;
+        // create_descriptor_sets_2d(&device, &mut data)?;
+        log::debug!("Creating index buffer.");
+        create_command_buffers(&device, &mut data)?;
+        // create_command_buffers_2d(&device, &mut data)?;
         create_sync_objects(&device, &mut data)?;
         Ok(Self {
             _entry: entry,
@@ -260,7 +243,8 @@ impl App {
         // Copy
 
         let memory = self.device.map_memory(
-            self.data.uniform_buffers_memory[image_index],
+            self.data.render_object.uniform_buffers_memory
+                [image_index],
             0,
             size_of::<UniformBufferObject>() as u64,
             vk::MemoryMapFlags::empty(),
@@ -269,7 +253,8 @@ impl App {
         memcpy(&ubo, memory.cast(), 1);
 
         self.device.unmap_memory(
-            self.data.uniform_buffers_memory[image_index],
+            self.data.render_object.uniform_buffers_memory
+                [image_index],
         );
 
         Ok(())
@@ -289,18 +274,18 @@ impl App {
             &mut self.data,
         )?;
         create_swapchain_image_views(&self.device, &mut self.data)?;
-        // create_render_pass(
-        //     &self.instance,
-        //     &self.device,
-        //     &mut self.data,
-        // )?;
-        create_render_pass_2d(
+        create_render_pass(
             &self.instance,
             &self.device,
             &mut self.data,
         )?;
-        // create_pipeline(&self.device, &mut self.data)?;
-        create_pipeline_2d(&self.device, &mut self.data)?;
+        // create_render_pass_2d(
+        //     &self.instance,
+        //     &self.device,
+        //     &mut self.data,
+        // )?;
+        create_pipeline(&self.device, &mut self.data)?;
+        // create_pipeline_2d(&self.device, &mut self.data)?;
         create_color_objects(
             &self.instance,
             &self.device,
@@ -311,8 +296,8 @@ impl App {
             &self.device,
             &mut self.data,
         )?;
-        // create_framebuffers(&self.device, &mut self.data)?;
-        create_framebuffers_2d(&self.device, &mut self.data)?;
+        create_framebuffers(&self.device, &mut self.data)?;
+        // create_framebuffers_2d(&self.device, &mut self.data)?;
         create_uniform_buffers(
             &self.instance,
             &self.device,
@@ -320,8 +305,9 @@ impl App {
         )?;
         create_descriptor_pool(&self.device, &mut self.data)?;
         create_descriptor_sets(&self.device, &mut self.data)?;
-        // create_command_buffers(&self.device, &mut self.data)?;
-        create_command_buffers_2d(&self.device, &mut self.data)?;
+        // create_descriptor_sets_2d(&self.device, &mut self.data)?;
+        create_command_buffers(&self.device, &mut self.data)?;
+        // create_command_buffers_2d(&self.device, &mut self.data)?;
         Ok(())
     }
 
@@ -363,10 +349,10 @@ impl App {
             &[self.data.image_available_semaphores[self.frame]];
         let wait_stages =
             &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-        // let command_buffers =
-        //     &[self.data.command_buffers[image_index as usize]];
-        let command_buffers =
-            &[self.data.command_buffers_2d[image_index as usize]];
+        let command_buffers = &[self
+            .data
+            .render_object
+            .command_buffer(image_index as usize)];
         let signal_semaphores =
             &[self.data.render_finished_semaphores[self.frame]];
         let submit_info = vk::SubmitInfo::builder()
@@ -432,18 +418,9 @@ impl App {
             .iter()
             .for_each(|s| self.device.destroy_semaphore(*s, None));
 
-        // self.device.free_memory(self.data.index_buffer_memory, None);
-        // self.device.destroy_buffer(self.data.index_buffer, None);
-        self.device
-            .free_memory(self.data.index_buffer_memory_2d, None);
-        self.device.destroy_buffer(self.data.index_buffer_2d, None);
-
-        // self.device
-        //     .free_memory(self.data.vertex_buffer_memory, None);
-        // self.device.destroy_buffer(self.data.vertex_buffer, None);
-        self.device
-            .free_memory(self.data.vertex_buffer_memory_2d, None);
-        self.device.destroy_buffer(self.data.vertex_buffer_2d, None);
+        self.data
+            .render_object
+            .destroy_static(&self.device, &self.data);
 
         self.device.destroy_sampler(self.data.texture_sampler, None);
         self.device
@@ -454,14 +431,6 @@ impl App {
 
         self.device
             .destroy_command_pool(self.data.command_pool, None);
-        // self.device.destroy_descriptor_set_layout(
-        //     self.data.descriptor_set_layout,
-        //     None,
-        // );
-        self.device.destroy_descriptor_set_layout(
-            self.data.descriptor_set_layout_2d,
-            None,
-        );
 
         self.device.destroy_device(None);
         self.instance.destroy_surface_khr(self.data.surface, None);
@@ -475,56 +444,27 @@ impl App {
     }
 
     unsafe fn destroy_swapchain(&mut self) {
-        // self.device.free_command_buffers(
-        //     self.data.command_pool,
-        //     &self.data.command_buffers,
-        // );
-        self.device.free_command_buffers(
-            self.data.command_pool,
-            &self.data.command_buffers_2d,
-        );
-
+        self.data
+            .render_object
+            .destroy_vars(&self.device, &self.data);
         self.device
             .destroy_descriptor_pool(self.data.descriptor_pool, None);
-        self.data
-            .uniform_buffers_memory
-            .iter()
-            .for_each(|m| self.device.free_memory(*m, None));
-        self.data
-            .uniform_buffers
-            .iter()
-            .for_each(|b| self.device.destroy_buffer(*b, None));
-
+        // ! Ska antagligen ligga i render object
         self.device
             .destroy_image_view(self.data.depth_image_view, None);
         self.device.free_memory(self.data.depth_image_memory, None);
         self.device.destroy_image(self.data.depth_image, None);
 
+        // ! Ska antagligen ligga i render object
         self.device
             .destroy_image_view(self.data.color_image_view, None);
         self.device.free_memory(self.data.color_image_memory, None);
         self.device.destroy_image(self.data.color_image, None);
 
-        // self.data
-        //     .framebuffers
-        //     .iter()
-        //     .for_each(|f| self.device.destroy_framebuffer(*f, None));
         self.data
-            .framebuffers_2d
+            .framebuffers
             .iter()
             .for_each(|f| self.device.destroy_framebuffer(*f, None));
-
-        // self.device.destroy_pipeline(self.data.pipeline, None);
-        self.device.destroy_pipeline(self.data.pipeline_2d, None);
-        // self.device
-        //     .destroy_pipeline_layout(self.data.pipeline_layout, None);
-        self.device.destroy_pipeline_layout(
-            self.data.pipeline_layout_2d,
-            None,
-        );
-        // self.device.destroy_render_pass(self.data.render_pass, None);
-        self.device
-            .destroy_render_pass(self.data.render_pass_2d, None);
 
         self.data
             .swapchain_image_views
@@ -572,12 +512,12 @@ fn load_model(data: &mut AppData) -> Result<()> {
             };
 
             if let Some(index) = unique_vertices.get(&vertex) {
-                data.indices.push(*index as u32);
+                data.render_object.indices.push(*index as u32);
             } else {
-                let index = data.vertices.len();
+                let index = data.render_object.vertices.len();
                 unique_vertices.insert(vertex, index);
-                data.vertices.push(vertex);
-                data.indices.push(index as u32);
+                data.render_object.vertices.push(vertex);
+                data.render_object.indices.push(index as u32);
             }
         }
     }
@@ -585,7 +525,7 @@ fn load_model(data: &mut AppData) -> Result<()> {
 }
 
 fn vertices_2d(data: &mut AppData) -> Result<()> {
-    data.vertices_2d = vec![
+    data.render_object.vertices_2d = vec![
         Vertex2 {
             pos: vec2(-0.5, -0.5),
             color: vec3(1.0, 0.0, 0.0),
@@ -607,6 +547,6 @@ fn vertices_2d(data: &mut AppData) -> Result<()> {
             tex_coord: vec2(0.0, 1.0),
         },
     ];
-    data.indices_2d = vec![0, 2, 1, 3, 2, 0];
+    data.render_object.indices_2d = vec![0, 2, 1, 3, 2, 0];
     Ok(())
 }

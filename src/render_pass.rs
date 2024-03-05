@@ -99,7 +99,8 @@ pub unsafe fn create_render_pass(
         .subpasses(subpasses)
         .dependencies(dependencies);
 
-    data.render_pass = device.create_render_pass(&info, None)?;
+    data.render_object.render_pass =
+        device.create_render_pass(&info, None)?;
 
     Ok(())
 }
@@ -188,7 +189,8 @@ pub unsafe fn create_render_pass_2d(
         .subpasses(subpasses)
         .dependencies(dependencies);
 
-    data.render_pass_2d = device.create_render_pass(&info, None)?;
+    data.render_object.render_pass_2d =
+        device.create_render_pass(&info, None)?;
 
     Ok(())
 }

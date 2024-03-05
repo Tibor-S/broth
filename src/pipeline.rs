@@ -111,10 +111,10 @@ pub unsafe fn create_pipeline(
             .attachments(attachments)
             .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
-    let set_layouts = &[data.descriptor_set_layout];
+    let set_layouts = &[data.render_object.descriptor_set_layout];
     let layout_info = vk::PipelineLayoutCreateInfo::builder()
         .set_layouts(set_layouts);
-    data.pipeline_layout =
+    data.render_object.pipeline_layout =
         device.create_pipeline_layout(&layout_info, None)?;
 
     let stages = &[vert_stage, frag_stage];
@@ -127,13 +127,13 @@ pub unsafe fn create_pipeline(
         .multisample_state(&multisample_state)
         .depth_stencil_state(&depth_stencil_state)
         .color_blend_state(&color_blend_state)
-        .layout(data.pipeline_layout)
-        .render_pass(data.render_pass)
+        .layout(data.render_object.pipeline_layout)
+        .render_pass(data.render_object.render_pass)
         .subpass(0)
         .base_pipeline_handle(vk::Pipeline::null()) // Optional.
         .base_pipeline_index(-1); // Optional.
 
-    data.pipeline = device
+    data.render_object.pipeline = device
         .create_graphics_pipelines(
             vk::PipelineCache::null(),
             &[info],
@@ -248,10 +248,10 @@ pub unsafe fn create_pipeline_2d(
             .attachments(attachments)
             .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
-    let set_layouts = &[data.descriptor_set_layout_2d];
+    let set_layouts = &[data.render_object.descriptor_set_layout_2d];
     let layout_info = vk::PipelineLayoutCreateInfo::builder()
         .set_layouts(set_layouts);
-    data.pipeline_layout_2d =
+    data.render_object.pipeline_layout_2d =
         device.create_pipeline_layout(&layout_info, None)?;
 
     let stages = &[vert_stage, frag_stage];
@@ -263,13 +263,13 @@ pub unsafe fn create_pipeline_2d(
         .rasterization_state(&rasterization_state)
         .multisample_state(&multisample_state)
         .color_blend_state(&color_blend_state)
-        .layout(data.pipeline_layout_2d)
-        .render_pass(data.render_pass_2d)
+        .layout(data.render_object.pipeline_layout_2d)
+        .render_pass(data.render_object.render_pass_2d)
         .subpass(0)
         .base_pipeline_handle(vk::Pipeline::null()) // Optional.
         .base_pipeline_index(-1); // Optional.
 
-    data.pipeline_2d = device
+    data.render_object.pipeline_2d = device
         .create_graphics_pipelines(
             vk::PipelineCache::null(),
             &[info],
