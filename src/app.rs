@@ -142,6 +142,8 @@ pub struct AppData {
     pub dimension: SpaceDimension,
     pub render_object: RenderObject,
     pub framebuffers: Vec<vk::Framebuffer>,
+    pub vertices: Vec<Vertex3>,
+    pub vertices_2d: Vec<Vertex2>,
 }
 
 impl App {
@@ -270,7 +272,7 @@ impl App {
             &mut data.texture_sampler,
         )?;
         load_model(
-            &mut data.render_object.vertices,
+            &mut data.vertices,
             &mut data.render_object.indices,
         )?;
         // vertices_2d(&mut data)?;
@@ -280,7 +282,7 @@ impl App {
             data.physical_device,
             data.graphics_queue,
             data.command_pool,
-            &data.render_object.vertices,
+            &data.vertices,
             &mut data.render_object.vertex_buffer,
             &mut data.render_object.vertex_buffer_memory,
         )?;
@@ -750,8 +752,11 @@ fn load_model(
     Ok(())
 }
 
-fn vertices_2d(data: &mut AppData) -> Result<()> {
-    data.render_object.vertices_2d = vec![
+fn create_vertices_2d(
+    vertices_2d: &mut Vec<Vertex2>,
+    indices_2d: &mut Vec<u32>,
+) -> Result<()> {
+    *vertices_2d = vec![
         Vertex2 {
             pos: vec2(-0.5, -0.5),
             color: vec3(1.0, 0.0, 0.0),
@@ -773,6 +778,6 @@ fn vertices_2d(data: &mut AppData) -> Result<()> {
             tex_coord: vec2(0.0, 1.0),
         },
     ];
-    data.render_object.indices_2d = vec![0, 2, 1, 3, 2, 0];
+    *indices_2d = vec![0, 2, 1, 3, 2, 0];
     Ok(())
 }

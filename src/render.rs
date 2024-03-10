@@ -20,8 +20,6 @@ pub struct RenderObject {
     pub pipeline_2d: vk::Pipeline,
     pub command_buffers: Vec<vk::CommandBuffer>,
     pub command_buffers_2d: Vec<vk::CommandBuffer>,
-    pub vertices: Vec<Vertex3>,
-    pub vertices_2d: Vec<Vertex2>,
     pub indices: Vec<u32>,
     pub indices_2d: Vec<u32>,
     pub vertex_buffer: vk::Buffer,
