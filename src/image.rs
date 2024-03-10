@@ -4,7 +4,6 @@ use vulkanalia::{
 };
 
 use crate::{
-    app::AppData,
     command::{
         begin_single_time_commands, end_single_time_commands,
         CommandError,
@@ -15,7 +14,7 @@ use crate::{
 pub unsafe fn create_image(
     instance: &Instance,
     device: &Device,
-    data: &AppData,
+    physical_device: vk::PhysicalDevice,
     width: u32,
     height: u32,
     mip_levels: u32,
@@ -49,7 +48,7 @@ pub unsafe fn create_image(
         .allocation_size(requirements.size)
         .memory_type_index(get_memory_type_index(
             instance,
-            data,
+            physical_device,
             properties,
             requirements,
         )?);
@@ -64,7 +63,9 @@ pub unsafe fn create_image(
 pub unsafe fn generate_mipmaps(
     instance: &Instance,
     device: &Device,
-    data: &AppData,
+    physical_device: vk::PhysicalDevice,
+    command_pool: vk::CommandPool,
+    graphics_queue: vk::Queue,
     image: vk::Image,
     format: vk::Format,
     width: u32,
@@ -73,7 +74,7 @@ pub unsafe fn generate_mipmaps(
 ) -> Result<()> {
     if !instance
         .get_physical_device_format_properties(
-            data.physical_device,
+            physical_device,
             format,
         )
         .optimal_tiling_features
@@ -82,7 +83,8 @@ pub unsafe fn generate_mipmaps(
         return Err(ImageError::MipMapError);
     }
 
-    let command_buffer = begin_single_time_commands(device, data)?;
+    let command_buffer =
+        begin_single_time_commands(device, command_pool)?;
 
     let subresource = vk::ImageSubresourceRange::builder()
         .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -204,20 +206,27 @@ pub unsafe fn generate_mipmaps(
         &[barrier],
     );
 
-    end_single_time_commands(device, data, command_buffer)?;
+    end_single_time_commands(
+        device,
+        graphics_queue,
+        command_pool,
+        command_buffer,
+    )?;
 
     Ok(())
 }
 
 pub unsafe fn copy_buffer_to_image(
     device: &Device,
-    data: &AppData,
+    command_pool: vk::CommandPool,
+    graphics_queue: vk::Queue,
     buffer: vk::Buffer,
     image: vk::Image,
     width: u32,
     height: u32,
 ) -> Result<()> {
-    let command_buffer = begin_single_time_commands(device, data)?;
+    let command_buffer =
+        begin_single_time_commands(device, command_pool)?;
 
     let subresource = vk::ImageSubresourceLayers::builder()
         .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -244,14 +253,20 @@ pub unsafe fn copy_buffer_to_image(
         vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         &[region],
     );
-    end_single_time_commands(device, data, command_buffer)?;
+    end_single_time_commands(
+        device,
+        graphics_queue,
+        command_pool,
+        command_buffer,
+    )?;
 
     Ok(())
 }
 
 pub unsafe fn transition_image_layout(
     device: &Device,
-    data: &AppData,
+    command_pool: vk::CommandPool,
+    graphics_queue: vk::Queue,
     image: vk::Image,
     format: vk::Format,
     old_layout: vk::ImageLayout,
@@ -296,7 +311,8 @@ pub unsafe fn transition_image_layout(
             return Err(ImageError::UnsupportedImageError);
         }
     };
-    let command_buffer = begin_single_time_commands(device, data)?;
+    let command_buffer =
+        begin_single_time_commands(device, command_pool)?;
 
     let aspect_mask = if new_layout
         == vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
@@ -340,7 +356,12 @@ pub unsafe fn transition_image_layout(
         &[barrier],
     );
 
-    end_single_time_commands(device, data, command_buffer)?;
+    end_single_time_commands(
+        device,
+        graphics_queue,
+        command_pool,
+        command_buffer,
+    )?;
 
     Ok(())
 }

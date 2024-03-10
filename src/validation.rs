@@ -11,22 +11,10 @@ use vulkanalia::Entry;
 use vulkanalia::{window as vk_window, Instance};
 use winit::window::Window;
 
-use crate::app::AppData;
-
 const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
 
 const VALIDATION_LAYER: vk::ExtensionName =
     vk::ExtensionName::from_bytes(b"VK_LAYER_KHRONOS_validation");
-
-#[derive(Clone, Debug, Error)]
-pub enum ValidationError {
-    #[error("Validation layer requested but not supported.")]
-    NoSupport,
-    #[error(transparent)]
-    VkErrorCode(#[from] ErrorCode),
-}
-type Result<T> = std::result::Result<T, ValidationError>;
-
 pub unsafe fn validated_layers(
     entry: &Entry,
 ) -> Result<Vec<*const i8>> {
@@ -70,7 +58,7 @@ pub fn validated_extensions(
 pub unsafe fn validated_instance(
     entry: &Entry,
     info: &vk::InstanceCreateInfo,
-    data: &mut AppData,
+    messenger: &mut vk::DebugUtilsMessengerEXT,
 ) -> Result<Instance> {
     let instance = entry.create_instance(&info, None)?;
 
@@ -80,7 +68,7 @@ pub unsafe fn validated_instance(
             .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
             .user_callback(Some(debug_callback));
 
-        data.messenger = instance
+        *messenger = instance
             .create_debug_utils_messenger_ext(&debug_info, None)?;
     }
 
@@ -151,3 +139,12 @@ extern "system" fn debug_callback(
 
     vk::FALSE
 }
+
+#[derive(Clone, Debug, Error)]
+pub enum ValidationError {
+    #[error("Validation layer requested but not supported.")]
+    NoSupport,
+    #[error(transparent)]
+    VkErrorCode(#[from] ErrorCode),
+}
+type Result<T> = std::result::Result<T, ValidationError>;

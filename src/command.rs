@@ -3,55 +3,59 @@ use vulkanalia::{
     Device, Instance,
 };
 
-use crate::{
-    app::AppData,
-    queue::{QueueError, QueueFamilyIndices},
-};
+use crate::queue::{QueueError, QueueFamilyIndices};
 
 pub unsafe fn create_command_pool(
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
+    surface: vk::SurfaceKHR,
+    physical_device: vk::PhysicalDevice,
+    command_pool: &mut vk::CommandPool,
 ) -> Result<()> {
-    let indices = QueueFamilyIndices::get(
-        instance,
-        data,
-        data.physical_device,
-    )?;
+    let indices =
+        QueueFamilyIndices::get(instance, surface, physical_device)?;
     let info = vk::CommandPoolCreateInfo::builder()
         .flags(vk::CommandPoolCreateFlags::empty()) // * Optional.
         .queue_family_index(indices.graphics);
 
-    data.command_pool = device.create_command_pool(&info, None)?;
+    *command_pool = device.create_command_pool(&info, None)?;
 
     Ok(())
 }
 
 pub unsafe fn create_command_buffers(
     device: &Device,
-    data: &mut AppData,
+    command_pool: vk::CommandPool,
+    framebuffers: &[vk::Framebuffer],
+    render_pass: vk::RenderPass,
+    pipeline: vk::Pipeline,
+    pipeline_layout: vk::PipelineLayout,
+    vertex_buffer: vk::Buffer,
+    index_buffer: vk::Buffer,
+    indices: &[u32],
+    swapchain_extent: vk::Extent2D,
+    descriptor_sets: &[vk::DescriptorSet],
+    command_buffers: &mut Vec<vk::CommandBuffer>,
 ) -> Result<()> {
     // Allocate
 
     let allocate_info = vk::CommandBufferAllocateInfo::builder()
-        .command_pool(data.command_pool)
+        .command_pool(command_pool)
         .level(vk::CommandBufferLevel::PRIMARY)
-        .command_buffer_count(data.framebuffers.len() as u32);
+        .command_buffer_count(framebuffers.len() as u32);
 
-    data.render_object.command_buffers =
+    *command_buffers =
         device.allocate_command_buffers(&allocate_info)?;
 
     // Commands
-    for (i, command_buffer) in
-        data.render_object.command_buffers.iter().enumerate()
-    {
+    for (i, command_buffer) in command_buffers.iter().enumerate() {
         let info = vk::CommandBufferBeginInfo::builder();
 
         device.begin_command_buffer(*command_buffer, &info)?;
 
         let render_area = vk::Rect2D::builder()
             .offset(vk::Offset2D::default())
-            .extent(data.swapchain_extent);
+            .extent(swapchain_extent);
 
         let color_clear_value = vk::ClearValue {
             color: vk::ClearColorValue {
@@ -68,8 +72,8 @@ pub unsafe fn create_command_buffers(
 
         let clear_values = &[color_clear_value, depth_clear_value];
         let info = vk::RenderPassBeginInfo::builder()
-            .render_pass(data.render_object.render_pass)
-            .framebuffer(data.framebuffers[i])
+            .render_pass(render_pass)
+            .framebuffer(framebuffers[i])
             .render_area(render_area)
             .clear_values(clear_values);
 
@@ -81,31 +85,31 @@ pub unsafe fn create_command_buffers(
         device.cmd_bind_pipeline(
             *command_buffer,
             vk::PipelineBindPoint::GRAPHICS,
-            data.render_object.pipeline,
+            pipeline,
         );
         device.cmd_bind_vertex_buffers(
             *command_buffer,
             0,
-            &[data.render_object.vertex_buffer],
+            &[vertex_buffer],
             &[0],
         );
         device.cmd_bind_index_buffer(
             *command_buffer,
-            data.render_object.index_buffer,
+            index_buffer,
             0,
             vk::IndexType::UINT32,
         );
         device.cmd_bind_descriptor_sets(
             *command_buffer,
             vk::PipelineBindPoint::GRAPHICS,
-            data.render_object.pipeline_layout,
+            pipeline_layout,
             0,
-            &[data.descriptor_sets[i]],
+            &[descriptor_sets[i]],
             &[],
         );
         device.cmd_draw_indexed(
             *command_buffer,
-            data.render_object.indices.len() as u32,
+            indices.len() as u32,
             1,
             0,
             0,
@@ -121,29 +125,37 @@ pub unsafe fn create_command_buffers(
 
 pub unsafe fn create_command_buffers_2d(
     device: &Device,
-    data: &mut AppData,
+    command_pool: vk::CommandPool,
+    framebuffers: &[vk::Framebuffer],
+    render_pass: vk::RenderPass,
+    pipeline: vk::Pipeline,
+    pipeline_layout: vk::PipelineLayout,
+    vertex_buffer: vk::Buffer,
+    index_buffer: vk::Buffer,
+    indices: &[u32],
+    swapchain_extent: vk::Extent2D,
+    descriptor_sets: &[vk::DescriptorSet],
+    command_buffers: &mut Vec<vk::CommandBuffer>,
 ) -> Result<()> {
     // Allocate
 
     let allocate_info = vk::CommandBufferAllocateInfo::builder()
-        .command_pool(data.command_pool)
+        .command_pool(command_pool)
         .level(vk::CommandBufferLevel::PRIMARY)
-        .command_buffer_count(data.framebuffers.len() as u32);
+        .command_buffer_count(framebuffers.len() as u32);
 
-    data.render_object.command_buffers_2d =
+    *command_buffers =
         device.allocate_command_buffers(&allocate_info)?;
 
     // Commands
-    for (i, command_buffer) in
-        data.render_object.command_buffers_2d.iter().enumerate()
-    {
+    for (i, command_buffer) in command_buffers.iter().enumerate() {
         let info = vk::CommandBufferBeginInfo::builder();
 
         device.begin_command_buffer(*command_buffer, &info)?;
 
         let render_area = vk::Rect2D::builder()
             .offset(vk::Offset2D::default())
-            .extent(data.swapchain_extent);
+            .extent(swapchain_extent);
 
         let color_clear_value = vk::ClearValue {
             color: vk::ClearColorValue {
@@ -153,8 +165,8 @@ pub unsafe fn create_command_buffers_2d(
 
         let clear_values = &[color_clear_value];
         let info = vk::RenderPassBeginInfo::builder()
-            .render_pass(data.render_object.render_pass_2d)
-            .framebuffer(data.framebuffers[i])
+            .render_pass(render_pass)
+            .framebuffer(framebuffers[i])
             .render_area(render_area)
             .clear_values(clear_values);
 
@@ -166,31 +178,31 @@ pub unsafe fn create_command_buffers_2d(
         device.cmd_bind_pipeline(
             *command_buffer,
             vk::PipelineBindPoint::GRAPHICS,
-            data.render_object.pipeline_2d,
+            pipeline,
         );
         device.cmd_bind_vertex_buffers(
             *command_buffer,
             0,
-            &[data.render_object.vertex_buffer_2d],
+            &[vertex_buffer],
             &[0],
         );
         device.cmd_bind_index_buffer(
             *command_buffer,
-            data.render_object.index_buffer_2d,
+            index_buffer,
             0,
             vk::IndexType::UINT32,
         );
         device.cmd_bind_descriptor_sets(
             *command_buffer,
             vk::PipelineBindPoint::GRAPHICS,
-            data.render_object.pipeline_layout_2d,
+            pipeline_layout,
             0,
-            &[data.descriptor_sets[i]],
+            &[descriptor_sets[i]],
             &[],
         );
         device.cmd_draw_indexed(
             *command_buffer,
-            data.render_object.indices_2d.len() as u32,
+            indices.len() as u32,
             1,
             0,
             0,
@@ -206,11 +218,11 @@ pub unsafe fn create_command_buffers_2d(
 
 pub unsafe fn begin_single_time_commands(
     device: &Device,
-    data: &AppData,
+    command_pool: vk::CommandPool,
 ) -> Result<vk::CommandBuffer> {
     let info = vk::CommandBufferAllocateInfo::builder()
         .level(vk::CommandBufferLevel::PRIMARY)
-        .command_pool(data.command_pool)
+        .command_pool(command_pool)
         .command_buffer_count(1);
 
     let command_buffer = device.allocate_command_buffers(&info)?[0];
@@ -225,7 +237,8 @@ pub unsafe fn begin_single_time_commands(
 
 pub unsafe fn end_single_time_commands(
     device: &Device,
-    data: &AppData,
+    graphics_queue: vk::Queue,
+    command_pool: vk::CommandPool,
     command_buffer: vk::CommandBuffer,
 ) -> Result<()> {
     device.end_command_buffer(command_buffer)?;
@@ -235,13 +248,13 @@ pub unsafe fn end_single_time_commands(
         vk::SubmitInfo::builder().command_buffers(command_buffers);
 
     device.queue_submit(
-        data.graphics_queue,
+        graphics_queue,
         &[info],
         vk::Fence::null(),
     )?;
-    device.queue_wait_idle(data.graphics_queue)?;
+    device.queue_wait_idle(graphics_queue)?;
 
-    device.free_command_buffers(data.command_pool, &[command_buffer]);
+    device.free_command_buffers(command_pool, &[command_buffer]);
 
     Ok(())
 }

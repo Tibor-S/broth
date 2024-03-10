@@ -1,5 +1,3 @@
-use std::default;
-
 use vulkanalia::{
     vk::{self, DeviceV1_0, ErrorCode},
     Device,

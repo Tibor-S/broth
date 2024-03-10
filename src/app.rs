@@ -2,34 +2,30 @@ use std::fs::File;
 use std::mem::size_of;
 
 use crate::buffer::{
-    create_index_buffer, create_index_buffer_2d,
-    create_uniform_buffers, BufferError, Mat4, UniformBufferObject,
+    create_index_buffer, create_uniform_buffers, BufferError, Mat4,
+    UniformBufferObject,
 };
 use crate::color::{create_color_objects, ColorError};
 use crate::command::{
-    create_command_buffers, create_command_buffers_2d,
-    create_command_pool, CommandError,
+    create_command_buffers, create_command_pool, CommandError,
 };
 use crate::descriptor::{
     create_descriptor_pool, create_descriptor_set_layout,
-    create_descriptor_set_layout_2d, create_descriptor_sets,
-    create_descriptor_sets_2d, DescriptorError,
+    create_descriptor_sets, DescriptorError,
 };
 use crate::device::{
     create_logical_device, pick_physical_device, DeviceError,
 };
-use crate::pipeline::{
-    create_pipeline, create_pipeline_2d, PipelineError,
-};
+
+use crate::pipeline::{create_pipeline, PipelineError};
 use crate::render::{
     RenderDimension, RenderObject, RenderObjectError,
 };
 use crate::render_pass::{
-    create_depth_objects, create_render_pass, create_render_pass_2d,
-    RenderPassError,
+    create_depth_objects, create_render_pass, RenderPassError,
 };
 use crate::swapchain::{
-    create_framebuffers, create_framebuffers_2d, create_swapchain,
+    create_framebuffers, create_swapchain,
     create_swapchain_image_views, create_sync_objects,
     SwapchainError,
 };
@@ -37,9 +33,7 @@ use crate::texture::{
     create_texture_image, create_texture_image_view,
     create_texture_sampler, TextureError,
 };
-use crate::vertex::{
-    create_vertex_buffer_2d, SpaceDimension, Vertex2,
-};
+use crate::vertex::{SpaceDimension, Vertex2};
 use crate::{
     instance::{create_instance, InstanceError},
     validation::destroy_debug_utils_messenger_ext,
@@ -157,42 +151,199 @@ impl App {
         })?;
         let entry = Entry::new(loader)?;
         let mut data = AppData::default();
-        let instance = create_instance(window, &entry, &mut data)?;
+        let instance =
+            create_instance(window, &entry, &mut data.messenger)?;
         data.surface = create_surface(&instance, &window, &window)?;
         data.render_object.render_dimension = RenderDimension::D3;
-        pick_physical_device(&instance, &mut data)?;
-        let device =
-            create_logical_device(&entry, &instance, &mut data)?;
-        create_swapchain(window, &instance, &device, &mut data)?;
-        create_swapchain_image_views(&device, &mut data)?;
-        create_render_pass(&instance, &device, &mut data)?;
+        pick_physical_device(
+            &instance,
+            data.surface,
+            &mut data.physical_device,
+            &mut data.msaa_samples,
+        )?;
+        let device = create_logical_device(
+            &entry,
+            &instance,
+            data.surface,
+            data.physical_device,
+            &mut data.graphics_queue,
+            &mut data.present_queue,
+        )?;
+        create_swapchain(
+            window,
+            &instance,
+            &device,
+            data.surface,
+            data.physical_device,
+            &mut data.swapchain,
+            &mut data.swapchain_images,
+            &mut data.swapchain_format,
+            &mut data.swapchain_extent,
+        )?;
+        create_swapchain_image_views(
+            &device,
+            &data.swapchain_images,
+            data.swapchain_format,
+            &mut data.swapchain_image_views,
+        )?;
+        create_render_pass(
+            &instance,
+            &device,
+            data.physical_device,
+            data.swapchain_format,
+            data.msaa_samples,
+            &mut data.render_object.render_pass,
+        )?;
         // create_render_pass_2d(&instance, &device, &mut data)?;
-        create_descriptor_set_layout(&device, &mut data)?;
+        create_descriptor_set_layout(
+            &device,
+            &mut data.render_object.descriptor_set_layout,
+        )?;
         // create_descriptor_set_layout_2d(&device, &mut data)?;
-        create_pipeline(&device, &mut data)?;
+        create_pipeline(
+            &device,
+            &mut data.render_object.pipeline,
+            &mut data.render_object.pipeline_layout,
+            data.render_object.descriptor_set_layout,
+            data.render_object.render_pass,
+            data.swapchain_extent,
+            data.msaa_samples,
+        )?;
         // create_pipeline_2d(&device, &mut data)?;
-        create_command_pool(&instance, &device, &mut data)?;
-        create_color_objects(&instance, &device, &mut data)?;
-        create_depth_objects(&instance, &device, &mut data)?;
-        create_framebuffers(&device, &mut data)?;
+        create_command_pool(
+            &instance,
+            &device,
+            data.surface,
+            data.physical_device,
+            &mut data.command_pool,
+        )?;
+        create_color_objects(
+            &instance,
+            &device,
+            &mut data.color_image,
+            &mut data.color_image_memory,
+            &mut data.color_image_view,
+            data.physical_device,
+            data.swapchain_extent,
+            data.swapchain_format,
+            data.msaa_samples,
+        )?;
+        create_depth_objects(
+            &instance,
+            &device,
+            data.physical_device,
+            data.swapchain_extent,
+            data.msaa_samples,
+            &mut data.depth_image,
+            &mut data.depth_image_memory,
+            &mut data.depth_image_view,
+        )?;
+        create_framebuffers(
+            &device,
+            &data.swapchain_image_views,
+            data.color_image_view,
+            data.depth_image_view,
+            data.swapchain_extent,
+            data.render_object.render_pass,
+            &mut data.framebuffers,
+        )?;
         // create_framebuffers_2d(&device, &mut data)?;
-        create_texture_image(&instance, &device, &mut data)?;
-        create_texture_image_view(&device, &mut data)?;
-        create_texture_sampler(&device, &mut data)?;
-        load_model(&mut data)?;
+        create_texture_image(
+            &instance,
+            &device,
+            data.physical_device,
+            data.command_pool,
+            data.graphics_queue,
+            &mut data.mip_levels,
+            &mut data.texture_image,
+            &mut data.texture_image_memory,
+        )?;
+        create_texture_image_view(
+            &device,
+            &data.texture_image,
+            &data.mip_levels,
+            &mut data.texture_image_view,
+        )?;
+        create_texture_sampler(
+            &device,
+            &data.mip_levels,
+            &mut data.texture_sampler,
+        )?;
+        load_model(
+            &mut data.render_object.vertices,
+            &mut data.render_object.indices,
+        )?;
         // vertices_2d(&mut data)?;
-        create_vertex_buffer(&instance, &device, &mut data)?;
+        create_vertex_buffer(
+            &instance,
+            &device,
+            data.physical_device,
+            data.graphics_queue,
+            data.command_pool,
+            &data.render_object.vertices,
+            &mut data.render_object.vertex_buffer,
+            &mut data.render_object.vertex_buffer_memory,
+        )?;
         // create_vertex_buffer_2d(&instance, &device, &mut data)?;
-        create_index_buffer(&instance, &device, &mut data)?;
+        create_index_buffer(
+            &instance,
+            &device,
+            data.graphics_queue,
+            data.physical_device,
+            &data.render_object.indices,
+            &mut data.render_object.index_buffer,
+            &mut data.render_object.index_buffer_memory,
+            data.command_pool,
+        )?;
         // create_index_buffer_2d(&instance, &device, &mut data)?;
-        create_uniform_buffers(&instance, &device, &mut data)?;
-        create_descriptor_pool(&device, &mut data)?;
-        create_descriptor_sets(&device, &mut data)?;
+        create_uniform_buffers(
+            &instance,
+            &device,
+            &data.swapchain_images,
+            &mut data.render_object.uniform_buffers,
+            &mut data.render_object.uniform_buffers_memory,
+            data.physical_device,
+        )?;
+        create_descriptor_pool(
+            &device,
+            data.swapchain_images.len() as u32,
+            &mut data.descriptor_pool,
+        )?;
+        create_descriptor_sets(
+            &device,
+            data.swapchain_images.len(),
+            data.descriptor_pool,
+            data.render_object.descriptor_set_layout,
+            &data.render_object.uniform_buffers,
+            data.texture_image_view,
+            data.texture_sampler,
+            &mut data.descriptor_sets,
+        )?;
         // create_descriptor_sets_2d(&device, &mut data)?;
         log::debug!("Creating index buffer.");
-        create_command_buffers(&device, &mut data)?;
+        create_command_buffers(
+            &device,
+            data.command_pool,
+            &data.framebuffers,
+            data.render_object.render_pass,
+            data.render_object.pipeline,
+            data.render_object.pipeline_layout,
+            data.render_object.vertex_buffer,
+            data.render_object.index_buffer,
+            &data.render_object.indices,
+            data.swapchain_extent,
+            &data.descriptor_sets,
+            &mut data.render_object.command_buffers,
+        )?;
         // create_command_buffers_2d(&device, &mut data)?;
-        create_sync_objects(&device, &mut data)?;
+        create_sync_objects(
+            &device,
+            &data.swapchain_images,
+            &mut data.image_available_semaphores,
+            &mut data.render_finished_semaphores,
+            &mut data.in_flight_fences,
+            &mut data.images_in_flight,
+        )?;
         Ok(Self {
             _entry: entry,
             instance,
@@ -267,46 +418,118 @@ impl App {
         log::debug!("Recreating swapchain.");
         self.device.device_wait_idle()?;
         self.destroy_swapchain();
+        let instance = &self.instance;
+        let device = &self.device;
+        let data = &mut self.data;
         create_swapchain(
             window,
-            &self.instance,
-            &self.device,
-            &mut self.data,
+            &instance,
+            &device,
+            data.surface,
+            data.physical_device,
+            &mut data.swapchain,
+            &mut data.swapchain_images,
+            &mut data.swapchain_format,
+            &mut data.swapchain_extent,
         )?;
-        create_swapchain_image_views(&self.device, &mut self.data)?;
+        create_swapchain_image_views(
+            &device,
+            &data.swapchain_images,
+            data.swapchain_format,
+            &mut data.swapchain_image_views,
+        )?;
         create_render_pass(
-            &self.instance,
-            &self.device,
-            &mut self.data,
+            &instance,
+            &device,
+            data.physical_device,
+            data.swapchain_format,
+            data.msaa_samples,
+            &mut data.render_object.render_pass,
         )?;
         // create_render_pass_2d(
         //     &self.instance,
         //     &self.device,
         //     &mut self.data,
         // )?;
-        create_pipeline(&self.device, &mut self.data)?;
+        create_pipeline(
+            &device,
+            &mut data.render_object.pipeline,
+            &mut data.render_object.pipeline_layout,
+            data.render_object.descriptor_set_layout,
+            data.render_object.render_pass,
+            data.swapchain_extent,
+            data.msaa_samples,
+        )?;
         // create_pipeline_2d(&self.device, &mut self.data)?;
         create_color_objects(
-            &self.instance,
-            &self.device,
-            &mut self.data,
+            &instance,
+            &device,
+            &mut data.color_image,
+            &mut data.color_image_memory,
+            &mut data.color_image_view,
+            data.physical_device,
+            data.swapchain_extent,
+            data.swapchain_format,
+            data.msaa_samples,
         )?;
         create_depth_objects(
-            &self.instance,
-            &self.device,
-            &mut self.data,
+            &instance,
+            &device,
+            data.physical_device,
+            data.swapchain_extent,
+            data.msaa_samples,
+            &mut data.depth_image,
+            &mut data.depth_image_memory,
+            &mut data.depth_image_view,
         )?;
-        create_framebuffers(&self.device, &mut self.data)?;
+        create_framebuffers(
+            &device,
+            &data.swapchain_image_views,
+            data.color_image_view,
+            data.depth_image_view,
+            data.swapchain_extent,
+            data.render_object.render_pass,
+            &mut data.framebuffers,
+        )?;
         // create_framebuffers_2d(&self.device, &mut self.data)?;
         create_uniform_buffers(
-            &self.instance,
-            &self.device,
-            &mut self.data,
+            &instance,
+            &device,
+            &data.swapchain_images,
+            &mut data.render_object.uniform_buffers,
+            &mut data.render_object.uniform_buffers_memory,
+            data.physical_device,
         )?;
-        create_descriptor_pool(&self.device, &mut self.data)?;
-        create_descriptor_sets(&self.device, &mut self.data)?;
+        create_descriptor_pool(
+            &device,
+            data.swapchain_images.len() as u32,
+            &mut data.descriptor_pool,
+        )?;
+        create_descriptor_sets(
+            &device,
+            data.swapchain_images.len(),
+            data.descriptor_pool,
+            data.render_object.descriptor_set_layout,
+            &data.render_object.uniform_buffers,
+            data.texture_image_view,
+            data.texture_sampler,
+            &mut data.descriptor_sets,
+        )?;
         // create_descriptor_sets_2d(&self.device, &mut self.data)?;
-        create_command_buffers(&self.device, &mut self.data)?;
+        create_command_buffers(
+            &device,
+            data.command_pool,
+            &data.framebuffers,
+            data.render_object.render_pass,
+            data.render_object.pipeline,
+            data.render_object.pipeline_layout,
+            data.render_object.vertex_buffer,
+            data.render_object.index_buffer,
+            &data.render_object.indices,
+            data.swapchain_extent,
+            &data.descriptor_sets,
+            &mut data.render_object.command_buffers,
+        )?;
         // create_command_buffers_2d(&self.device, &mut self.data)?;
         Ok(())
     }
@@ -474,7 +697,10 @@ impl App {
     }
 }
 
-fn load_model(data: &mut AppData) -> Result<()> {
+fn load_model(
+    vertices: &mut Vec<Vertex3>,
+    indices: &mut Vec<u32>,
+) -> Result<()> {
     let mut reader = BufReader::new(
         File::open("resources/viking_room.obj").map_err(|e| {
             AppError::FileOpenError(format!(
@@ -512,12 +738,12 @@ fn load_model(data: &mut AppData) -> Result<()> {
             };
 
             if let Some(index) = unique_vertices.get(&vertex) {
-                data.render_object.indices.push(*index as u32);
+                indices.push(*index as u32);
             } else {
-                let index = data.render_object.vertices.len();
+                let index = vertices.len();
                 unique_vertices.insert(vertex, index);
-                data.render_object.vertices.push(vertex);
-                data.render_object.indices.push(index as u32);
+                vertices.push(vertex);
+                indices.push(index as u32);
             }
         }
     }

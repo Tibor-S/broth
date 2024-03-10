@@ -4,7 +4,6 @@ use vulkanalia::{
 };
 
 use crate::{
-    app::AppData,
     image::{create_image, ImageError},
     image_view::{create_image_view, ImageViewError},
 };
@@ -12,7 +11,10 @@ use crate::{
 pub unsafe fn create_render_pass(
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
+    physical_device: vk::PhysicalDevice,
+    swapchain_format: vk::Format,
+    msaa_samples: vk::SampleCountFlags,
+    render_pass: &mut vk::RenderPass,
 ) -> Result<()> {
     let dependency = vk::SubpassDependency::builder()
         .src_subpass(vk::SUBPASS_EXTERNAL)
@@ -32,8 +34,8 @@ pub unsafe fn create_render_pass(
         );
 
     let color_attachment = vk::AttachmentDescription::builder()
-        .format(data.swapchain_format)
-        .samples(data.msaa_samples)
+        .format(swapchain_format)
+        .samples(msaa_samples)
         .load_op(vk::AttachmentLoadOp::CLEAR)
         .store_op(vk::AttachmentStoreOp::STORE)
         .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
@@ -47,7 +49,7 @@ pub unsafe fn create_render_pass(
 
     let color_resolve_attachment =
         vk::AttachmentDescription::builder()
-            .format(data.swapchain_format)
+            .format(swapchain_format)
             .samples(vk::SampleCountFlags::_1)
             .load_op(vk::AttachmentLoadOp::DONT_CARE)
             .store_op(vk::AttachmentStoreOp::STORE)
@@ -66,8 +68,8 @@ pub unsafe fn create_render_pass(
 
     let depth_stencil_attachment =
         vk::AttachmentDescription::builder()
-            .format(get_depth_format(instance, data)?)
-            .samples(data.msaa_samples)
+            .format(get_depth_format(instance, physical_device)?)
+            .samples(msaa_samples)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::DONT_CARE)
             .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
@@ -99,15 +101,14 @@ pub unsafe fn create_render_pass(
         .subpasses(subpasses)
         .dependencies(dependencies);
 
-    data.render_object.render_pass =
-        device.create_render_pass(&info, None)?;
+    *render_pass = device.create_render_pass(&info, None)?;
 
     Ok(())
 }
 
 pub unsafe fn get_depth_format(
     instance: &Instance,
-    data: &AppData,
+    physical_device: vk::PhysicalDevice,
 ) -> Result<vk::Format> {
     let candidates = &[
         vk::Format::D32_SFLOAT,
@@ -117,7 +118,7 @@ pub unsafe fn get_depth_format(
 
     get_supported_format(
         instance,
-        data,
+        physical_device,
         candidates,
         vk::ImageTiling::OPTIMAL,
         vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
@@ -127,7 +128,9 @@ pub unsafe fn get_depth_format(
 pub unsafe fn create_render_pass_2d(
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
+    swapchain_format: vk::Format,
+    msaa_samples: vk::SampleCountFlags,
+    render_pass: &mut vk::RenderPass,
 ) -> Result<()> {
     let dependency = vk::SubpassDependency::builder()
         .src_subpass(vk::SUBPASS_EXTERNAL)
@@ -144,8 +147,8 @@ pub unsafe fn create_render_pass_2d(
         .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
 
     let color_attachment = vk::AttachmentDescription::builder()
-        .format(data.swapchain_format)
-        .samples(data.msaa_samples)
+        .format(swapchain_format)
+        .samples(msaa_samples)
         .load_op(vk::AttachmentLoadOp::CLEAR)
         .store_op(vk::AttachmentStoreOp::STORE)
         .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
@@ -159,7 +162,7 @@ pub unsafe fn create_render_pass_2d(
 
     let color_resolve_attachment =
         vk::AttachmentDescription::builder()
-            .format(data.swapchain_format)
+            .format(swapchain_format)
             .samples(vk::SampleCountFlags::_1)
             .load_op(vk::AttachmentLoadOp::DONT_CARE)
             .store_op(vk::AttachmentStoreOp::STORE)
@@ -189,15 +192,14 @@ pub unsafe fn create_render_pass_2d(
         .subpasses(subpasses)
         .dependencies(dependencies);
 
-    data.render_object.render_pass_2d =
-        device.create_render_pass(&info, None)?;
+    *render_pass = device.create_render_pass(&info, None)?;
 
     Ok(())
 }
 
 pub unsafe fn get_supported_format(
     instance: &Instance,
-    data: &AppData,
+    physical_device: vk::PhysicalDevice,
     candidates: &[vk::Format],
     tiling: vk::ImageTiling,
     features: vk::FormatFeatureFlags,
@@ -208,7 +210,7 @@ pub unsafe fn get_supported_format(
         .find(|f| {
             let properties = instance
                 .get_physical_device_format_properties(
-                    data.physical_device,
+                    physical_device,
                     *f,
                 );
             match tiling {
@@ -227,31 +229,33 @@ pub unsafe fn get_supported_format(
 pub unsafe fn create_depth_objects(
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
+    physical_device: vk::PhysicalDevice,
+    swapchain_extent: vk::Extent2D,
+    msaa_samples: vk::SampleCountFlags,
+    depth_image: &mut vk::Image,
+    depth_image_memory: &mut vk::DeviceMemory,
+    depth_image_view: &mut vk::ImageView,
 ) -> Result<()> {
-    let format = get_depth_format(instance, data)?;
-    let (depth_image, depth_image_memory) = create_image(
+    let format = get_depth_format(instance, physical_device)?;
+    (*depth_image, *depth_image_memory) = create_image(
         instance,
         device,
-        data,
-        data.swapchain_extent.width,
-        data.swapchain_extent.height,
+        physical_device,
+        swapchain_extent.width,
+        swapchain_extent.height,
         1,
-        data.msaa_samples,
+        msaa_samples,
         format,
         vk::ImageTiling::OPTIMAL,
         vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
         vk::MemoryPropertyFlags::DEVICE_LOCAL,
     )?;
 
-    data.depth_image = depth_image;
-    data.depth_image_memory = depth_image_memory;
-
     // Image View
 
-    data.depth_image_view = create_image_view(
+    *depth_image_view = create_image_view(
         device,
-        data.depth_image,
+        *depth_image,
         format,
         vk::ImageAspectFlags::DEPTH,
         1,

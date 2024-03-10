@@ -7,7 +7,6 @@ use vulkanalia::{
 };
 
 use crate::{
-    app::AppData,
     command::{
         begin_single_time_commands, end_single_time_commands,
         CommandError,
@@ -20,7 +19,7 @@ pub type Mat4 = cgmath::Matrix4<f32>;
 pub unsafe fn create_buffer(
     instance: &Instance,
     device: &Device,
-    data: &AppData,
+    physical_device: vk::PhysicalDevice,
     size: vk::DeviceSize,
     usage: vk::BufferUsageFlags,
     properties: vk::MemoryPropertyFlags,
@@ -38,7 +37,7 @@ pub unsafe fn create_buffer(
         .allocation_size(requirements.size)
         .memory_type_index(get_memory_type_index(
             instance,
-            data,
+            physical_device,
             properties,
             requirements,
         )?);
@@ -54,26 +53,27 @@ pub unsafe fn create_buffer(
 pub unsafe fn create_uniform_buffers(
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
+    swapchain_images: &[vk::Image],
+    uniform_buffers: &mut Vec<vk::Buffer>,
+    uniform_buffers_memory: &mut Vec<vk::DeviceMemory>,
+    physical_device: vk::PhysicalDevice,
 ) -> Result<()> {
-    data.render_object.uniform_buffers.clear();
-    data.render_object.uniform_buffers_memory.clear();
+    uniform_buffers.clear();
+    uniform_buffers_memory.clear();
 
-    for _ in 0..data.swapchain_images.len() {
+    for _ in 0..swapchain_images.len() {
         let (uniform_buffer, uniform_buffer_memory) = create_buffer(
             instance,
             device,
-            data,
+            physical_device,
             size_of::<UniformBufferObject>() as u64,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
             vk::MemoryPropertyFlags::HOST_COHERENT
                 | vk::MemoryPropertyFlags::HOST_VISIBLE,
         )?;
 
-        data.render_object.uniform_buffers.push(uniform_buffer);
-        data.render_object
-            .uniform_buffers_memory
-            .push(uniform_buffer_memory);
+        uniform_buffers.push(uniform_buffer);
+        uniform_buffers_memory.push(uniform_buffer_memory);
     }
 
     Ok(())
@@ -90,15 +90,19 @@ pub struct UniformBufferObject {
 pub unsafe fn create_index_buffer(
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
+    graphics_queue: vk::Queue,
+    physical_device: vk::PhysicalDevice,
+    indices: &[u32],
+    index_buffer: &mut vk::Buffer,
+    index_buffer_memory: &mut vk::DeviceMemory,
+    command_pool: vk::CommandPool,
 ) -> Result<()> {
-    let size =
-        (size_of::<u32>() * data.render_object.indices.len()) as u64;
+    let size = (size_of::<u32>() * indices.len()) as u64;
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
         device,
-        data,
+        physical_device,
         size,
         vk::BufferUsageFlags::TRANSFER_SRC,
         vk::MemoryPropertyFlags::HOST_COHERENT
@@ -112,81 +116,31 @@ pub unsafe fn create_index_buffer(
         vk::MemoryMapFlags::empty(),
     )?;
 
-    memcpy(
-        data.render_object.indices.as_ptr(),
-        memory.cast(),
-        data.render_object.indices.len(),
-    );
+    memcpy(indices.as_ptr(), memory.cast(), indices.len());
 
     device.unmap_memory(staging_buffer_memory);
 
-    let (index_buffer, index_buffer_memory) = create_buffer(
+    let (index_buffer_t, index_buffer_memory_t) = create_buffer(
         instance,
         device,
-        data,
+        physical_device,
         size,
         vk::BufferUsageFlags::TRANSFER_DST
             | vk::BufferUsageFlags::INDEX_BUFFER,
         vk::MemoryPropertyFlags::DEVICE_LOCAL,
     )?;
 
-    data.render_object.index_buffer = index_buffer;
-    data.render_object.index_buffer_memory = index_buffer_memory;
+    *index_buffer = index_buffer_t;
+    *index_buffer_memory = index_buffer_memory_t;
 
-    copy_buffer(device, data, staging_buffer, index_buffer, size)?;
-
-    device.destroy_buffer(staging_buffer, None);
-    device.free_memory(staging_buffer_memory, None);
-
-    Ok(())
-}
-pub unsafe fn create_index_buffer_2d(
-    instance: &Instance,
-    device: &Device,
-    data: &mut AppData,
-) -> Result<()> {
-    let size = (size_of::<u32>()
-        * data.render_object.indices_2d.len()) as u64;
-
-    let (staging_buffer, staging_buffer_memory) = create_buffer(
-        instance,
+    copy_buffer(
         device,
-        data,
+        graphics_queue,
+        command_pool,
+        staging_buffer,
+        *index_buffer,
         size,
-        vk::BufferUsageFlags::TRANSFER_SRC,
-        vk::MemoryPropertyFlags::HOST_COHERENT
-            | vk::MemoryPropertyFlags::HOST_VISIBLE,
     )?;
-
-    let memory = device.map_memory(
-        staging_buffer_memory,
-        0,
-        size,
-        vk::MemoryMapFlags::empty(),
-    )?;
-
-    memcpy(
-        data.render_object.indices_2d.as_ptr(),
-        memory.cast(),
-        data.render_object.indices_2d.len(),
-    );
-
-    device.unmap_memory(staging_buffer_memory);
-
-    let (index_buffer, index_buffer_memory) = create_buffer(
-        instance,
-        device,
-        data,
-        size,
-        vk::BufferUsageFlags::TRANSFER_DST
-            | vk::BufferUsageFlags::INDEX_BUFFER,
-        vk::MemoryPropertyFlags::DEVICE_LOCAL,
-    )?;
-
-    data.render_object.index_buffer_2d = index_buffer;
-    data.render_object.index_buffer_memory_2d = index_buffer_memory;
-
-    copy_buffer(device, data, staging_buffer, index_buffer, size)?;
 
     device.destroy_buffer(staging_buffer, None);
     device.free_memory(staging_buffer_memory, None);
@@ -196,12 +150,14 @@ pub unsafe fn create_index_buffer_2d(
 
 pub unsafe fn copy_buffer(
     device: &Device,
-    data: &AppData,
+    graphics_queue: vk::Queue,
+    command_pool: vk::CommandPool,
     source: vk::Buffer,
     destination: vk::Buffer,
     size: vk::DeviceSize,
 ) -> Result<()> {
-    let command_buffer = begin_single_time_commands(device, data)?;
+    let command_buffer =
+        begin_single_time_commands(device, command_pool)?;
 
     let regions = vk::BufferCopy::builder().size(size);
     device.cmd_copy_buffer(
@@ -211,10 +167,16 @@ pub unsafe fn copy_buffer(
         &[regions],
     );
 
-    end_single_time_commands(device, data, command_buffer)?;
+    end_single_time_commands(
+        device,
+        graphics_queue,
+        command_pool,
+        command_buffer,
+    )?;
 
     Ok(())
 }
+
 #[derive(Debug, Error, Clone)]
 pub enum BufferError {
     #[error(transparent)]

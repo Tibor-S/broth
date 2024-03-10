@@ -4,7 +4,6 @@ use vulkanalia::{
 };
 
 use crate::{
-    app::AppData,
     image::{create_image, ImageError},
     image_view::{create_image_view, ImageViewError},
 };
@@ -12,30 +11,33 @@ use crate::{
 pub unsafe fn create_color_objects(
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
+    color_image: &mut vk::Image,
+    color_image_memory: &mut vk::DeviceMemory,
+    color_image_view: &mut vk::ImageView,
+    physical_device: vk::PhysicalDevice,
+    swapchain_extent: vk::Extent2D,
+    swapchain_format: vk::Format,
+    msaa_samples: vk::SampleCountFlags,
 ) -> Result<()> {
-    let (color_image, color_image_memory) = create_image(
+    (*color_image, *color_image_memory) = create_image(
         instance,
         device,
-        data,
-        data.swapchain_extent.width,
-        data.swapchain_extent.height,
+        physical_device,
+        swapchain_extent.width,
+        swapchain_extent.height,
         1,
-        data.msaa_samples,
-        data.swapchain_format,
+        msaa_samples,
+        swapchain_format,
         vk::ImageTiling::OPTIMAL,
         vk::ImageUsageFlags::COLOR_ATTACHMENT
             | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
         vk::MemoryPropertyFlags::DEVICE_LOCAL,
     )?;
 
-    data.color_image = color_image;
-    data.color_image_memory = color_image_memory;
-
-    data.color_image_view = create_image_view(
+    *color_image_view = create_image_view(
         device,
-        data.color_image,
-        data.swapchain_format,
+        *color_image,
+        swapchain_format,
         vk::ImageAspectFlags::COLOR,
         1,
     )?;

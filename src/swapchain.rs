@@ -8,7 +8,6 @@ use vulkanalia::{
 use winit::window::Window;
 
 use crate::{
-    app::AppData,
     image_view::{create_image_view, ImageViewError},
     queue::{QueueError, QueueFamilyIndices},
     MAX_FRAMES_IN_FLIGHT,
@@ -18,15 +17,17 @@ pub unsafe fn create_swapchain(
     window: &Window,
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
+    surface: vk::SurfaceKHR,
+    physical_device: vk::PhysicalDevice,
+    swapchain: &mut vk::SwapchainKHR,
+    swapchain_images: &mut Vec<vk::Image>,
+    swapchain_format: &mut vk::Format,
+    swapchain_extent: &mut vk::Extent2D,
 ) -> Result<()> {
-    let indices = QueueFamilyIndices::get(
-        instance,
-        data,
-        data.physical_device,
-    )?;
+    let indices =
+        QueueFamilyIndices::get(instance, surface, physical_device)?;
     let support =
-        SwapchainSupport::get(instance, data, data.physical_device)?;
+        SwapchainSupport::get(instance, surface, physical_device)?;
 
     let surface_format =
         get_swapchain_surface_format(&support.formats);
@@ -51,7 +52,7 @@ pub unsafe fn create_swapchain(
     };
 
     let info = vk::SwapchainCreateInfoKHR::builder()
-        .surface(data.surface)
+        .surface(surface)
         .min_image_count(image_count)
         .image_format(surface_format.format)
         .image_color_space(surface_format.color_space)
@@ -66,26 +67,27 @@ pub unsafe fn create_swapchain(
         .clipped(true)
         .old_swapchain(vk::SwapchainKHR::null());
 
-    data.swapchain = device.create_swapchain_khr(&info, None)?;
-    data.swapchain_images =
-        device.get_swapchain_images_khr(data.swapchain)?;
-    data.swapchain_format = surface_format.format;
-    data.swapchain_extent = extent;
+    *swapchain = device.create_swapchain_khr(&info, None)?;
+    *swapchain_images =
+        device.get_swapchain_images_khr(*swapchain)?;
+    *swapchain_format = surface_format.format;
+    *swapchain_extent = extent;
     Ok(())
 }
 
 pub unsafe fn create_swapchain_image_views(
     device: &Device,
-    data: &mut AppData,
+    swapchain_images: &[vk::Image],
+    swapchain_format: vk::Format,
+    swapchain_image_views: &mut Vec<ImageView>,
 ) -> Result<()> {
-    data.swapchain_image_views = data
-        .swapchain_images
+    *swapchain_image_views = swapchain_images
         .iter()
         .map(|i| {
             create_image_view(
                 device,
                 *i,
-                data.swapchain_format,
+                swapchain_format,
                 vk::ImageAspectFlags::COLOR,
                 1,
             )
@@ -153,24 +155,24 @@ pub struct SwapchainSupport {
 impl SwapchainSupport {
     pub unsafe fn get(
         instance: &Instance,
-        data: &AppData,
+        surface: vk::SurfaceKHR,
         physical_device: vk::PhysicalDevice,
     ) -> Result<Self> {
         Ok(Self {
             capabilities: instance
                 .get_physical_device_surface_capabilities_khr(
                     physical_device,
-                    data.surface,
+                    surface,
                 )?,
             formats: instance
                 .get_physical_device_surface_formats_khr(
                     physical_device,
-                    data.surface,
+                    surface,
                 )?,
             present_modes: instance
                 .get_physical_device_surface_present_modes_khr(
                     physical_device,
-                    data.surface,
+                    surface,
                 )?,
         })
     }
@@ -178,19 +180,23 @@ impl SwapchainSupport {
 
 pub unsafe fn create_framebuffers(
     device: &Device,
-    data: &mut AppData,
+    swapchain_image_views: &[vk::ImageView],
+    color_image_view: vk::ImageView,
+    depth_image_view: vk::ImageView,
+    swapchain_extent: vk::Extent2D,
+    render_pass: vk::RenderPass,
+    framebuffers: &mut Vec<vk::Framebuffer>,
 ) -> Result<()> {
-    data.framebuffers = data
-        .swapchain_image_views
+    *framebuffers = swapchain_image_views
         .iter()
         .map(|i| {
             let attachments =
-                &[data.color_image_view, data.depth_image_view, *i];
+                &[color_image_view, depth_image_view, *i];
             let create_info = vk::FramebufferCreateInfo::builder()
-                .render_pass(data.render_object.render_pass)
+                .render_pass(render_pass)
                 .attachments(attachments)
-                .width(data.swapchain_extent.width)
-                .height(data.swapchain_extent.height)
+                .width(swapchain_extent.width)
+                .height(swapchain_extent.height)
                 .layers(1);
 
             device.create_framebuffer(&create_info, None)
@@ -202,18 +208,21 @@ pub unsafe fn create_framebuffers(
 
 pub unsafe fn create_framebuffers_2d(
     device: &Device,
-    data: &mut AppData,
+    swapchain_image_views: &[vk::ImageView],
+    color_image_view: vk::ImageView,
+    swapchain_extent: vk::Extent2D,
+    render_pass: vk::RenderPass,
+    framebuffers: &mut Vec<vk::Framebuffer>,
 ) -> Result<()> {
-    data.framebuffers = data
-        .swapchain_image_views
+    *framebuffers = swapchain_image_views
         .iter()
         .map(|i| {
-            let attachments = &[data.color_image_view, *i];
+            let attachments = &[color_image_view, *i];
             let create_info = vk::FramebufferCreateInfo::builder()
-                .render_pass(data.render_object.render_pass_2d)
+                .render_pass(render_pass)
                 .attachments(attachments)
-                .width(data.swapchain_extent.width)
-                .height(data.swapchain_extent.height)
+                .width(swapchain_extent.width)
+                .height(swapchain_extent.height)
                 .layers(1);
 
             device.create_framebuffer(&create_info, None)
@@ -225,25 +234,25 @@ pub unsafe fn create_framebuffers_2d(
 
 pub unsafe fn create_sync_objects(
     device: &Device,
-    data: &mut AppData,
+    swapchain_images: &[vk::Image],
+    image_available_semaphores: &mut Vec<vk::Semaphore>,
+    render_finished_semaphores: &mut Vec<vk::Semaphore>,
+    in_flight_fences: &mut Vec<vk::Fence>,
+    images_in_flight: &mut Vec<vk::Fence>,
 ) -> Result<()> {
     let semaphore_info = vk::SemaphoreCreateInfo::builder();
     let fence_info = vk::FenceCreateInfo::builder()
         .flags(vk::FenceCreateFlags::SIGNALED);
 
-    data.images_in_flight = data
-        .swapchain_images
-        .iter()
-        .map(|_| vk::Fence::null())
-        .collect();
+    *images_in_flight =
+        swapchain_images.iter().map(|_| vk::Fence::null()).collect();
 
     for _ in 0..MAX_FRAMES_IN_FLIGHT {
-        data.image_available_semaphores
+        image_available_semaphores
             .push(device.create_semaphore(&semaphore_info, None)?);
-        data.render_finished_semaphores
+        render_finished_semaphores
             .push(device.create_semaphore(&semaphore_info, None)?);
-
-        data.in_flight_fences
+        in_flight_fences
             .push(device.create_fence(&fence_info, None)?);
     }
 

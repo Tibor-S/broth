@@ -4,26 +4,16 @@ use vulkanalia::vk::{self, ErrorCode, HasBuilder};
 use vulkanalia::{Entry, Instance};
 use winit::window::Window;
 
-use crate::app::AppData;
 use crate::validation::{
     validated_extensions, validated_info, validated_instance,
     validated_layers, ValidationError,
 };
 use crate::PORTABILITY_MACOS_VERSION;
 
-#[derive(Debug, Error, Clone)]
-pub enum InstanceError {
-    #[error(transparent)]
-    VkErrorCode(#[from] ErrorCode),
-    #[error(transparent)]
-    ValidationError(#[from] ValidationError),
-}
-type Result<T> = std::result::Result<T, InstanceError>;
-
 pub unsafe fn create_instance(
     window: &Window,
     entry: &Entry,
-    data: &mut AppData,
+    messenger: &mut vk::DebugUtilsMessengerEXT,
 ) -> Result<Instance> {
     let application_info = vk::ApplicationInfo::builder()
         .application_name(b"Broth\0")
@@ -61,6 +51,15 @@ pub unsafe fn create_instance(
         flags,
     )?;
 
-    let instance = validated_instance(entry, &info, data)?;
+    let instance = validated_instance(entry, &info, messenger)?;
     Ok(instance)
 }
+
+#[derive(Debug, Error, Clone)]
+pub enum InstanceError {
+    #[error(transparent)]
+    VkErrorCode(#[from] ErrorCode),
+    #[error(transparent)]
+    ValidationError(#[from] ValidationError),
+}
+type Result<T> = std::result::Result<T, InstanceError>;

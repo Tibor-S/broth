@@ -6,7 +6,6 @@ use vulkanalia::{
 };
 
 use crate::{
-    app::AppData,
     queue::{QueueError, QueueFamilyIndices},
     swapchain::{SwapchainError, SwapchainSupport},
     validation::{validated_layers, ValidationError},
@@ -16,13 +15,13 @@ use crate::{
 pub unsafe fn create_logical_device(
     entry: &Entry,
     instance: &Instance,
-    data: &mut AppData,
+    surface: vk::SurfaceKHR,
+    physical_device: vk::PhysicalDevice,
+    graphics_queue: &mut vk::Queue,
+    present_queue: &mut vk::Queue,
 ) -> Result<Device> {
-    let indices = QueueFamilyIndices::get(
-        instance,
-        data,
-        data.physical_device,
-    )?;
+    let indices =
+        QueueFamilyIndices::get(instance, surface, physical_device)?;
 
     let mut unique_indices = HashSet::new();
     unique_indices.insert(indices.graphics);
@@ -59,24 +58,23 @@ pub unsafe fn create_logical_device(
         .enabled_features(&features);
 
     let device =
-        instance.create_device(data.physical_device, &info, None)?;
-    data.graphics_queue =
-        device.get_device_queue(indices.graphics, 0);
-    data.present_queue = device.get_device_queue(indices.present, 0);
+        instance.create_device(physical_device, &info, None)?;
+    *graphics_queue = device.get_device_queue(indices.graphics, 0);
+    *present_queue = device.get_device_queue(indices.present, 0);
 
     Ok(device)
 }
 
 pub unsafe fn check_physical_device(
     instance: &Instance,
-    data: &AppData,
+    surface: vk::SurfaceKHR,
     physical_device: vk::PhysicalDevice,
 ) -> Result<()> {
-    QueueFamilyIndices::get(instance, data, physical_device)?;
+    QueueFamilyIndices::get(instance, surface, physical_device)?;
     check_physical_device_extensions(instance, physical_device)?;
 
     let support =
-        SwapchainSupport::get(instance, data, physical_device)?;
+        SwapchainSupport::get(instance, surface, physical_device)?;
     if support.formats.is_empty() || support.present_modes.is_empty()
     {
         return Err(DeviceError::SwapchainSupportError);
@@ -110,13 +108,19 @@ pub unsafe fn check_physical_device_extensions(
 
 pub unsafe fn pick_physical_device(
     instance: &Instance,
-    data: &mut AppData,
+    surface: vk::SurfaceKHR,
+    physical_device: &mut vk::PhysicalDevice,
+    msaa_samples: &mut vk::SampleCountFlags,
 ) -> Result<()> {
-    for physical_device in instance.enumerate_physical_devices()? {
-        let properties =
-            instance.get_physical_device_properties(physical_device);
+    for physical_device_t in instance.enumerate_physical_devices()? {
+        let properties = instance
+            .get_physical_device_properties(physical_device_t);
 
-        match check_physical_device(instance, data, physical_device) {
+        match check_physical_device(
+            instance,
+            surface,
+            physical_device_t,
+        ) {
             Err(e) => {
                 log::warn!(
                     "Skipping physical device (`{}`): {}",
@@ -129,12 +133,12 @@ pub unsafe fn pick_physical_device(
                     "Selected physical device (`{}`).",
                     properties.device_name
                 );
-                data.physical_device = physical_device;
-                data.msaa_samples =
-                    get_max_msaa_samples(instance, data);
+                *physical_device = physical_device_t;
+                *msaa_samples =
+                    get_max_msaa_samples(instance, *physical_device);
                 log::info!(
                     "Using msaa x{}",
-                    match data.msaa_samples {
+                    match *msaa_samples {
                         vk::SampleCountFlags::_1 => 1,
                         vk::SampleCountFlags::_2 => 2,
                         vk::SampleCountFlags::_4 => 4,
@@ -166,10 +170,10 @@ pub unsafe fn pick_physical_device(
 
 unsafe fn get_max_msaa_samples(
     instance: &Instance,
-    data: &AppData,
+    physical_device: vk::PhysicalDevice,
 ) -> vk::SampleCountFlags {
     let properties =
-        instance.get_physical_device_properties(data.physical_device);
+        instance.get_physical_device_properties(physical_device);
     let counts = properties.limits.framebuffer_color_sample_counts
         & properties.limits.framebuffer_depth_sample_counts;
     [

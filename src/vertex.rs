@@ -4,7 +4,6 @@ use std::ptr::copy_nonoverlapping as memcpy;
 use vulkanalia::vk::{self, DeviceV1_0, ErrorCode, HasBuilder};
 use vulkanalia::{Device, Instance};
 
-use crate::app::AppData;
 use crate::buffer::{copy_buffer, create_buffer, BufferError};
 type Vec2 = cgmath::Vector2<f32>;
 type Vec3 = cgmath::Vector3<f32>;
@@ -12,15 +11,19 @@ type Vec3 = cgmath::Vector3<f32>;
 pub unsafe fn create_vertex_buffer(
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
+    physical_device: vk::PhysicalDevice,
+    graphics_queue: vk::Queue,
+    command_pool: vk::CommandPool,
+    vertices: &[Vertex3],
+    vertex_buffer: &mut vk::Buffer,
+    vertex_buffer_memory: &mut vk::DeviceMemory,
 ) -> Result<()> {
-    let size = (size_of::<Vertex3>()
-        * data.render_object.vertices.len()) as u64;
+    let size = (size_of::<Vertex3>() * vertices.len()) as u64;
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
         device,
-        data,
+        physical_device,
         size,
         vk::BufferUsageFlags::TRANSFER_SRC,
         vk::MemoryPropertyFlags::HOST_COHERENT
@@ -34,28 +37,28 @@ pub unsafe fn create_vertex_buffer(
         vk::MemoryMapFlags::empty(),
     )?;
 
-    memcpy(
-        data.render_object.vertices.as_ptr(),
-        memory.cast(),
-        data.render_object.vertices.len(),
-    );
+    memcpy(vertices.as_ptr(), memory.cast(), vertices.len());
 
     device.unmap_memory(staging_buffer_memory);
 
-    let (vertex_buffer, vertex_buffer_memory) = create_buffer(
+    (*vertex_buffer, *vertex_buffer_memory) = create_buffer(
         instance,
         device,
-        data,
+        physical_device,
         size,
         vk::BufferUsageFlags::TRANSFER_DST
             | vk::BufferUsageFlags::VERTEX_BUFFER,
         vk::MemoryPropertyFlags::DEVICE_LOCAL,
     )?;
 
-    data.render_object.vertex_buffer = vertex_buffer;
-    data.render_object.vertex_buffer_memory = vertex_buffer_memory;
-
-    copy_buffer(device, data, staging_buffer, vertex_buffer, size)?;
+    copy_buffer(
+        device,
+        graphics_queue,
+        command_pool,
+        staging_buffer,
+        *vertex_buffer,
+        size,
+    )?;
     device.destroy_buffer(staging_buffer, None);
     device.free_memory(staging_buffer_memory, None);
 
@@ -65,15 +68,19 @@ pub unsafe fn create_vertex_buffer(
 pub unsafe fn create_vertex_buffer_2d(
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
+    physical_device: vk::PhysicalDevice,
+    graphics_queue: vk::Queue,
+    command_pool: vk::CommandPool,
+    vertices: &[Vertex2],
+    vertex_buffer: &mut vk::Buffer,
+    vertex_buffer_memory: &mut vk::DeviceMemory,
 ) -> Result<()> {
-    let size = (size_of::<Vertex2>()
-        * data.render_object.vertices_2d.len()) as u64;
+    let size = (size_of::<Vertex2>() * vertices.len()) as u64;
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
         device,
-        data,
+        physical_device,
         size,
         vk::BufferUsageFlags::TRANSFER_SRC,
         vk::MemoryPropertyFlags::HOST_COHERENT
@@ -87,28 +94,28 @@ pub unsafe fn create_vertex_buffer_2d(
         vk::MemoryMapFlags::empty(),
     )?;
 
-    memcpy(
-        data.render_object.vertices_2d.as_ptr(),
-        memory.cast(),
-        data.render_object.vertices_2d.len(),
-    );
+    memcpy(vertices.as_ptr(), memory.cast(), vertices.len());
 
     device.unmap_memory(staging_buffer_memory);
 
-    let (vertex_buffer, vertex_buffer_memory) = create_buffer(
+    (*vertex_buffer, *vertex_buffer_memory) = create_buffer(
         instance,
         device,
-        data,
+        physical_device,
         size,
         vk::BufferUsageFlags::TRANSFER_DST
             | vk::BufferUsageFlags::VERTEX_BUFFER,
         vk::MemoryPropertyFlags::DEVICE_LOCAL,
     )?;
 
-    data.render_object.vertex_buffer_2d = vertex_buffer;
-    data.render_object.vertex_buffer_memory_2d = vertex_buffer_memory;
-
-    copy_buffer(device, data, staging_buffer, vertex_buffer, size)?;
+    copy_buffer(
+        device,
+        graphics_queue,
+        command_pool,
+        staging_buffer,
+        *vertex_buffer,
+        size,
+    )?;
     device.destroy_buffer(staging_buffer, None);
     device.free_memory(staging_buffer_memory, None);
 

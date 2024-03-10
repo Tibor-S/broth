@@ -5,11 +5,11 @@ use vulkanalia::{
     Device,
 };
 
-use crate::{app::AppData, buffer::UniformBufferObject};
+use crate::buffer::UniformBufferObject;
 
 pub unsafe fn create_descriptor_set_layout(
     device: &Device,
-    data: &mut AppData,
+    descriptor_set_layout: &mut vk::DescriptorSetLayout,
 ) -> Result<()> {
     let ubo_binding = vk::DescriptorSetLayoutBinding::builder()
         .binding(0)
@@ -27,27 +27,7 @@ pub unsafe fn create_descriptor_set_layout(
     let info = vk::DescriptorSetLayoutCreateInfo::builder()
         .bindings(bindings);
 
-    data.render_object.descriptor_set_layout =
-        device.create_descriptor_set_layout(&info, None)?;
-
-    Ok(())
-}
-
-pub unsafe fn create_descriptor_set_layout_2d(
-    device: &Device,
-    data: &mut AppData,
-) -> Result<()> {
-    let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
-        .binding(1)
-        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        .descriptor_count(1)
-        .stage_flags(vk::ShaderStageFlags::FRAGMENT);
-
-    let bindings = &[sampler_binding];
-    let info = vk::DescriptorSetLayoutCreateInfo::builder()
-        .bindings(bindings);
-
-    data.render_object.descriptor_set_layout_2d =
+    *descriptor_set_layout =
         device.create_descriptor_set_layout(&info, None)?;
 
     Ok(())
@@ -55,67 +35,70 @@ pub unsafe fn create_descriptor_set_layout_2d(
 
 pub unsafe fn create_descriptor_pool(
     device: &Device,
-    data: &mut AppData,
+    swapchain_images_len: u32,
+    descriptor_pool: &mut vk::DescriptorPool,
 ) -> Result<()> {
     let ubo_size = vk::DescriptorPoolSize::builder()
         .type_(vk::DescriptorType::UNIFORM_BUFFER)
-        .descriptor_count(data.swapchain_images.len() as u32);
+        .descriptor_count(swapchain_images_len);
 
     let sampler_size = vk::DescriptorPoolSize::builder()
         .type_(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        .descriptor_count(data.swapchain_images.len() as u32);
+        .descriptor_count(swapchain_images_len);
 
     let pool_sizes = &[ubo_size, sampler_size];
     let info = vk::DescriptorPoolCreateInfo::builder()
         .pool_sizes(pool_sizes)
-        .max_sets(data.swapchain_images.len() as u32);
+        .max_sets(swapchain_images_len);
 
-    data.descriptor_pool =
-        device.create_descriptor_pool(&info, None)?;
+    *descriptor_pool = device.create_descriptor_pool(&info, None)?;
 
     Ok(())
 }
 
 pub unsafe fn create_descriptor_sets(
     device: &Device,
-    data: &mut AppData,
+    swapchain_images_len: usize,
+    descriptor_pool: vk::DescriptorPool,
+    descriptor_set_layout: vk::DescriptorSetLayout,
+    uniform_buffers: &[vk::Buffer],
+    texture_image_view: vk::ImageView,
+    texture_sampler: vk::Sampler,
+    descriptor_sets: &mut Vec<vk::DescriptorSet>,
 ) -> Result<()> {
     // Allocate
 
-    let layouts = vec![
-        data.render_object.descriptor_set_layout;
-        data.swapchain_images.len()
-    ];
+    let layouts = vec![descriptor_set_layout; swapchain_images_len];
 
     let info = vk::DescriptorSetAllocateInfo::builder()
-        .descriptor_pool(data.descriptor_pool)
+        .descriptor_pool(descriptor_pool)
         .set_layouts(&layouts);
 
-    data.descriptor_sets = device.allocate_descriptor_sets(&info)?;
+    *descriptor_sets = device.allocate_descriptor_sets(&info)?;
 
     // Update
 
-    for i in 0..data.swapchain_images.len() {
+    for i in 0..swapchain_images_len {
         let info = vk::DescriptorBufferInfo::builder()
-            .buffer(data.render_object.uniform_buffers[i])
+            .buffer(uniform_buffers[i])
             .offset(0)
             .range(size_of::<UniformBufferObject>() as u64);
 
         let buffer_info = &[info];
         let ubo_write = vk::WriteDescriptorSet::builder()
-            .dst_set(data.descriptor_sets[i])
+            .dst_set(descriptor_sets[i])
             .dst_binding(0)
             .dst_array_element(0)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .buffer_info(buffer_info);
         let info = vk::DescriptorImageInfo::builder()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(data.texture_image_view)
-            .sampler(data.texture_sampler);
+            .image_view(texture_image_view)
+            .sampler(texture_sampler);
 
         let image_info = &[info];
         let sampler_write = vk::WriteDescriptorSet::builder()
-            .dst_set(data.descriptor_sets[i])
+            .dst_set(descriptor_sets[i])
             .dst_binding(1)
             .dst_array_element(0)
             .descriptor_type(
@@ -134,24 +117,27 @@ pub unsafe fn create_descriptor_sets(
 
 pub unsafe fn create_descriptor_sets_2d(
     device: &Device,
-    data: &mut AppData,
+    swapchain_images_len: usize,
+    descriptor_pool: vk::DescriptorPool,
+    descriptor_set_layout: vk::DescriptorSetLayout,
+    uniform_buffers: &[vk::Buffer],
+    texture_image_view: vk::ImageView,
+    texture_sampler: vk::Sampler,
+    descriptor_sets: &mut Vec<vk::DescriptorSet>,
 ) -> Result<()> {
     // Allocate
 
-    let layouts = vec![
-        data.render_object.descriptor_set_layout_2d;
-        data.swapchain_images.len()
-    ];
+    let layouts = vec![descriptor_set_layout; swapchain_images_len];
 
     let info = vk::DescriptorSetAllocateInfo::builder()
-        .descriptor_pool(data.descriptor_pool)
+        .descriptor_pool(descriptor_pool)
         .set_layouts(&layouts);
 
-    data.descriptor_sets = device.allocate_descriptor_sets(&info)?;
+    *descriptor_sets = device.allocate_descriptor_sets(&info)?;
 
     // Update
 
-    for i in 0..data.swapchain_images.len() {
+    for i in 0..swapchain_images_len {
         // let info = vk::DescriptorBufferInfo::builder()
         //     .buffer(data.uniform_buffers[i])
         //     .offset(0)
@@ -166,12 +152,12 @@ pub unsafe fn create_descriptor_sets_2d(
         //     .buffer_info(buffer_info);
         let info = vk::DescriptorImageInfo::builder()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(data.texture_image_view)
-            .sampler(data.texture_sampler);
+            .image_view(texture_image_view)
+            .sampler(texture_sampler);
 
         let image_info = &[info];
         let sampler_write = vk::WriteDescriptorSet::builder()
-            .dst_set(data.descriptor_sets[i])
+            .dst_set(descriptor_sets[i])
             .dst_binding(1)
             .dst_array_element(0)
             .descriptor_type(

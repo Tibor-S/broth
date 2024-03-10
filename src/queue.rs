@@ -3,8 +3,6 @@ use vulkanalia::{
     Instance,
 };
 
-use crate::app::AppData;
-
 #[derive(Copy, Clone, Debug)]
 pub struct QueueFamilyIndices {
     pub graphics: u32,
@@ -14,7 +12,7 @@ pub struct QueueFamilyIndices {
 impl QueueFamilyIndices {
     pub unsafe fn get(
         instance: &Instance,
-        data: &AppData,
+        surface: vk::SurfaceKHR,
         physical_device: vk::PhysicalDevice,
     ) -> Result<Self> {
         let properties = instance
@@ -34,7 +32,7 @@ impl QueueFamilyIndices {
             if instance.get_physical_device_surface_support_khr(
                 physical_device,
                 index as u32,
-                data.surface,
+                surface,
             )? {
                 present = Some(index as u32);
                 break;

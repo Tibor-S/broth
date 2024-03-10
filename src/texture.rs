@@ -7,7 +7,6 @@ use vulkanalia::{
 };
 
 use crate::{
-    app::AppData,
     buffer::{create_buffer, BufferError},
     image::{
         copy_buffer_to_image, create_image, generate_mipmaps,
@@ -19,7 +18,12 @@ use crate::{
 pub unsafe fn create_texture_image(
     instance: &Instance,
     device: &Device,
-    data: &mut AppData,
+    physical_device: vk::PhysicalDevice,
+    command_pool: vk::CommandPool,
+    graphics_queue: vk::Queue,
+    mip_levels: &mut u32,
+    texture_image: &mut vk::Image,
+    texture_image_memory: &mut vk::DeviceMemory,
 ) -> Result<()> {
     let image =
         File::open("resources/viking_room.png").map_err(|e| {
@@ -37,7 +41,7 @@ pub unsafe fn create_texture_image(
 
     let size = reader.info().raw_bytes() as u64;
     let (width, height) = reader.info().size();
-    data.mip_levels =
+    *mip_levels =
         (width.max(height) as f32).log2().floor() as u32 + 1;
 
     if width != 1024
@@ -50,7 +54,7 @@ pub unsafe fn create_texture_image(
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
         device,
-        data,
+        physical_device,
         size,
         vk::BufferUsageFlags::TRANSFER_SRC,
         vk::MemoryPropertyFlags::HOST_COHERENT
@@ -68,13 +72,13 @@ pub unsafe fn create_texture_image(
 
     device.unmap_memory(staging_buffer_memory);
 
-    let (texture_image, texture_image_memory) = create_image(
+    (*texture_image, *texture_image_memory) = create_image(
         instance,
         device,
-        data,
+        physical_device,
         width,
         height,
-        data.mip_levels,
+        *mip_levels,
         vk::SampleCountFlags::_1,
         // ! SRGB is not necessarily supported
         vk::Format::R8G8B8A8_SRGB,
@@ -85,24 +89,23 @@ pub unsafe fn create_texture_image(
         vk::MemoryPropertyFlags::DEVICE_LOCAL,
     )?;
 
-    data.texture_image = texture_image;
-    data.texture_image_memory = texture_image_memory;
-
     transition_image_layout(
         device,
-        data,
-        data.texture_image,
+        command_pool,
+        graphics_queue,
+        *texture_image,
         vk::Format::R8G8B8A8_SRGB,
         vk::ImageLayout::UNDEFINED,
         vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        data.mip_levels,
+        *mip_levels,
     )?;
 
     copy_buffer_to_image(
         device,
-        data,
+        command_pool,
+        graphics_queue,
         staging_buffer,
-        data.texture_image,
+        *texture_image,
         width,
         height,
     )?;
@@ -113,12 +116,14 @@ pub unsafe fn create_texture_image(
     generate_mipmaps(
         instance,
         device,
-        data,
-        data.texture_image,
+        physical_device,
+        command_pool,
+        graphics_queue,
+        *texture_image,
         vk::Format::R8G8B8A8_SRGB,
         width,
         height,
-        data.mip_levels,
+        *mip_levels,
     )?;
 
     Ok(())
@@ -126,14 +131,16 @@ pub unsafe fn create_texture_image(
 
 pub unsafe fn create_texture_image_view(
     device: &Device,
-    data: &mut AppData,
+    texture_image: &vk::Image,
+    mip_levels: &u32,
+    texture_image_view: &mut vk::ImageView,
 ) -> Result<()> {
-    data.texture_image_view = create_image_view(
+    *texture_image_view = create_image_view(
         device,
-        data.texture_image,
+        *texture_image,
         vk::Format::R8G8B8A8_SRGB,
         vk::ImageAspectFlags::COLOR,
-        data.mip_levels,
+        *mip_levels,
     )?;
 
     Ok(())
@@ -141,7 +148,8 @@ pub unsafe fn create_texture_image_view(
 
 pub unsafe fn create_texture_sampler(
     device: &Device,
-    data: &mut AppData,
+    mip_levels: &u32,
+    texture_sampler: &mut vk::Sampler,
 ) -> Result<()> {
     let info = vk::SamplerCreateInfo::builder()
         .mag_filter(vk::Filter::LINEAR)
@@ -159,10 +167,10 @@ pub unsafe fn create_texture_sampler(
         .compare_op(vk::CompareOp::ALWAYS)
         .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
         .min_lod(0.0) // Optional.
-        .max_lod(data.mip_levels as f32)
+        .max_lod(*mip_levels as f32)
         .mip_lod_bias(0.0); // Optional.
 
-    data.texture_sampler = device.create_sampler(&info, None)?;
+    *texture_sampler = device.create_sampler(&info, None)?;
 
     Ok(())
 }

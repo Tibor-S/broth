@@ -3,16 +3,14 @@ use vulkanalia::{
     Instance,
 };
 
-use crate::app::AppData;
-
 pub unsafe fn get_memory_type_index(
     instance: &Instance,
-    data: &AppData,
+    physical_device: vk::PhysicalDevice,
     properties: vk::MemoryPropertyFlags,
     requirements: vk::MemoryRequirements,
 ) -> Result<u32> {
     let memory = instance
-        .get_physical_device_memory_properties(data.physical_device);
+        .get_physical_device_memory_properties(physical_device);
     (0..memory.memory_type_count)
         .find(|i| {
             let suitable =

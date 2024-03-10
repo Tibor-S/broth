@@ -4,17 +4,19 @@ use vulkanalia::{
     Device,
 };
 
-use crate::{
-    app::AppData,
-    vertex::{Vertex2, Vertex3},
-};
+use crate::vertex::{Vertex2, Vertex3};
 
 // TODO: Look into creating an interface specifying wether
 // TODO: the pipeline is 2D or 3D. Will use two different
 // TODO: shaders and vertex structs.
 pub unsafe fn create_pipeline(
     device: &Device,
-    data: &mut AppData,
+    pipeline: &mut vk::Pipeline,
+    pipeline_layout: &mut vk::PipelineLayout,
+    descriptor_set_layout: vk::DescriptorSetLayout,
+    render_pass: vk::RenderPass,
+    swapchain_extent: vk::Extent2D,
+    msaa_samples: vk::SampleCountFlags,
 ) -> Result<()> {
     let vert = include_bytes!("../shaders/vert.spv");
     let frag = include_bytes!("../shaders/frag.spv");
@@ -46,15 +48,15 @@ pub unsafe fn create_pipeline(
     let viewport = vk::Viewport::builder()
         .x(0.0)
         .y(0.0)
-        .width(data.swapchain_extent.width as f32)
-        .height(data.swapchain_extent.height as f32)
+        .width(swapchain_extent.width as f32)
+        .height(swapchain_extent.height as f32)
         .min_depth(0.0)
         .max_depth(1.0);
 
     // TODO: Wtf is a scissor?
     let scissor = vk::Rect2D::builder()
         .offset(vk::Offset2D { x: 0, y: 0 })
-        .extent(data.swapchain_extent);
+        .extent(swapchain_extent);
 
     let viewports = &[viewport];
     let scissors = &[scissor];
@@ -78,7 +80,7 @@ pub unsafe fn create_pipeline(
         vk::PipelineMultisampleStateCreateInfo::builder()
             .sample_shading_enable(true)
             .min_sample_shading(0.2)
-            .rasterization_samples(data.msaa_samples);
+            .rasterization_samples(msaa_samples);
 
     let depth_stencil_state =
         vk::PipelineDepthStencilStateCreateInfo::builder()
@@ -111,10 +113,10 @@ pub unsafe fn create_pipeline(
             .attachments(attachments)
             .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
-    let set_layouts = &[data.render_object.descriptor_set_layout];
+    let set_layouts = &[descriptor_set_layout];
     let layout_info = vk::PipelineLayoutCreateInfo::builder()
         .set_layouts(set_layouts);
-    data.render_object.pipeline_layout =
+    *pipeline_layout =
         device.create_pipeline_layout(&layout_info, None)?;
 
     let stages = &[vert_stage, frag_stage];
@@ -127,13 +129,13 @@ pub unsafe fn create_pipeline(
         .multisample_state(&multisample_state)
         .depth_stencil_state(&depth_stencil_state)
         .color_blend_state(&color_blend_state)
-        .layout(data.render_object.pipeline_layout)
-        .render_pass(data.render_object.render_pass)
+        .layout(*pipeline_layout)
+        .render_pass(render_pass)
         .subpass(0)
         .base_pipeline_handle(vk::Pipeline::null()) // Optional.
         .base_pipeline_index(-1); // Optional.
 
-    data.render_object.pipeline = device
+    *pipeline = device
         .create_graphics_pipelines(
             vk::PipelineCache::null(),
             &[info],
@@ -151,7 +153,12 @@ pub unsafe fn create_pipeline(
 }
 pub unsafe fn create_pipeline_2d(
     device: &Device,
-    data: &mut AppData,
+    pipeline: &mut vk::Pipeline,
+    pipeline_layout: &mut vk::PipelineLayout,
+    descriptor_set_layout: vk::DescriptorSetLayout,
+    render_pass: vk::RenderPass,
+    swapchain_extent: vk::Extent2D,
+    msaa_samples: vk::SampleCountFlags,
 ) -> Result<()> {
     let vert = include_bytes!("../shaders/2d_vert.spv");
     let frag = include_bytes!("../shaders/frag.spv");
@@ -183,15 +190,15 @@ pub unsafe fn create_pipeline_2d(
     let viewport = vk::Viewport::builder()
         .x(0.0)
         .y(0.0)
-        .width(data.swapchain_extent.width as f32)
-        .height(data.swapchain_extent.height as f32)
+        .width(swapchain_extent.width as f32)
+        .height(swapchain_extent.height as f32)
         .min_depth(0.0)
         .max_depth(1.0);
 
     // TODO: Wtf is a scissor?
     let scissor = vk::Rect2D::builder()
         .offset(vk::Offset2D { x: 0, y: 0 })
-        .extent(data.swapchain_extent);
+        .extent(swapchain_extent);
 
     let viewports = &[viewport];
     let scissors = &[scissor];
@@ -215,7 +222,7 @@ pub unsafe fn create_pipeline_2d(
         vk::PipelineMultisampleStateCreateInfo::builder()
             .sample_shading_enable(true)
             .min_sample_shading(0.2)
-            .rasterization_samples(data.msaa_samples);
+            .rasterization_samples(msaa_samples);
 
     // let depth_stencil_state =
     //     vk::PipelineDepthStencilStateCreateInfo::builder()
@@ -248,10 +255,10 @@ pub unsafe fn create_pipeline_2d(
             .attachments(attachments)
             .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
-    let set_layouts = &[data.render_object.descriptor_set_layout_2d];
+    let set_layouts = &[descriptor_set_layout];
     let layout_info = vk::PipelineLayoutCreateInfo::builder()
         .set_layouts(set_layouts);
-    data.render_object.pipeline_layout_2d =
+    *pipeline_layout =
         device.create_pipeline_layout(&layout_info, None)?;
 
     let stages = &[vert_stage, frag_stage];
@@ -263,13 +270,13 @@ pub unsafe fn create_pipeline_2d(
         .rasterization_state(&rasterization_state)
         .multisample_state(&multisample_state)
         .color_blend_state(&color_blend_state)
-        .layout(data.render_object.pipeline_layout_2d)
-        .render_pass(data.render_object.render_pass_2d)
+        .layout(*pipeline_layout)
+        .render_pass(render_pass)
         .subpass(0)
         .base_pipeline_handle(vk::Pipeline::null()) // Optional.
         .base_pipeline_index(-1); // Optional.
 
-    data.render_object.pipeline_2d = device
+    *pipeline = device
         .create_graphics_pipelines(
             vk::PipelineCache::null(),
             &[info],
