@@ -144,6 +144,8 @@ pub struct AppData {
     pub framebuffers: Vec<vk::Framebuffer>,
     pub vertices: Vec<Vertex3>,
     pub vertices_2d: Vec<Vertex2>,
+    pub indices: Vec<u32>,
+    pub indices_2d: Vec<u32>,
 }
 
 impl App {
@@ -271,10 +273,7 @@ impl App {
             &data.mip_levels,
             &mut data.texture_sampler,
         )?;
-        load_model(
-            &mut data.vertices,
-            &mut data.render_object.indices,
-        )?;
+        load_model(&mut data.vertices, &mut data.indices)?;
         // vertices_2d(&mut data)?;
         create_vertex_buffer(
             &instance,
@@ -292,7 +291,7 @@ impl App {
             &device,
             data.graphics_queue,
             data.physical_device,
-            &data.render_object.indices,
+            &data.indices,
             &mut data.render_object.index_buffer,
             &mut data.render_object.index_buffer_memory,
             data.command_pool,
@@ -332,7 +331,7 @@ impl App {
             data.render_object.pipeline_layout,
             data.render_object.vertex_buffer,
             data.render_object.index_buffer,
-            &data.render_object.indices,
+            &data.indices,
             data.swapchain_extent,
             &data.descriptor_sets,
             &mut data.render_object.command_buffers,
@@ -527,7 +526,7 @@ impl App {
             data.render_object.pipeline_layout,
             data.render_object.vertex_buffer,
             data.render_object.index_buffer,
-            &data.render_object.indices,
+            &data.indices,
             data.swapchain_extent,
             &data.descriptor_sets,
             &mut data.render_object.command_buffers,
