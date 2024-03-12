@@ -22,9 +22,6 @@ use crate::device::{
 use crate::pipeline::{
     create_pipeline, create_pipeline_2d, PipelineError,
 };
-use crate::render::{
-    RenderDimension, RenderObject, RenderObjectError,
-};
 use crate::render_pass::{
     create_depth_objects, create_render_pass, create_render_pass_2d,
     RenderPassError,
@@ -93,8 +90,6 @@ pub enum AppError {
     VertexError(#[from] VertexError),
     #[error(transparent)]
     CommandError(#[from] CommandError),
-    #[error(transparent)]
-    RenderObjectError(#[from] RenderObjectError),
     #[error("Failed to open file with error: {0}.")]
     FileOpenError(String),
     #[error("{0:?}")]
@@ -147,12 +142,22 @@ pub struct AppData {
     pub depth_image_memory: vk::DeviceMemory,
     pub depth_image_view: vk::ImageView,
     pub dimension: SpaceDimension,
-    pub render_object: RenderObject,
     pub framebuffers: Vec<vk::Framebuffer>,
     pub vertices: Vec<Vertex3>,
     pub vertices_2d: Vec<Vertex2>,
     pub indices: Vec<u32>,
     pub indices_2d: Vec<u32>,
+    pub render_pass: vk::RenderPass,
+    pub pipeline_layout: vk::PipelineLayout,
+    pub descriptor_set_layout: vk::DescriptorSetLayout,
+    pub pipeline: vk::Pipeline,
+    pub command_buffers: Vec<vk::CommandBuffer>,
+    pub vertex_buffer: vk::Buffer,
+    pub vertex_buffer_memory: vk::DeviceMemory,
+    pub index_buffer: vk::Buffer,
+    pub index_buffer_memory: vk::DeviceMemory,
+    pub uniform_buffers: Vec<vk::Buffer>,
+    pub uniform_buffers_memory: Vec<vk::DeviceMemory>,
 }
 
 impl App {
@@ -165,7 +170,6 @@ impl App {
         let instance =
             create_instance(window, &entry, &mut data.messenger)?;
         data.surface = create_surface(&instance, &window, &window)?;
-        data.render_object.render_dimension = RenderDimension::D3;
         pick_physical_device(
             &instance,
             data.surface,
@@ -198,45 +202,45 @@ impl App {
             &mut data.swapchain_image_views,
         )?;
 
-        // create_render_pass(
-        //     &instance,
-        //     &device,
-        //     data.physical_device,
-        //     data.swapchain_format,
-        //     data.msaa_samples,
-        //     &mut data.render_object.render_pass,
-        // )?;
-        create_render_pass_2d(
+        create_render_pass(
             &instance,
             &device,
+            data.physical_device,
             data.swapchain_format,
             data.msaa_samples,
-            &mut data.render_object.render_pass,
+            &mut data.render_pass,
         )?;
+        // create_render_pass_2d(
+        //     &instance,
+        //     &device,
+        //     data.swapchain_format,
+        //     data.msaa_samples,
+        //     &mut data.render_pass,
+        // )?;
 
         create_descriptor_set_layout(
             &device,
-            &mut data.render_object.descriptor_set_layout,
+            &mut data.descriptor_set_layout,
         )?;
 
-        // create_pipeline(
-        //     &device,
-        //     &mut data.render_object.pipeline,
-        //     &mut data.render_object.pipeline_layout,
-        //     data.render_object.descriptor_set_layout,
-        //     data.render_object.render_pass,
-        //     data.swapchain_extent,
-        //     data.msaa_samples,
-        // )?;
-        create_pipeline_2d(
+        create_pipeline(
             &device,
-            &mut data.render_object.pipeline,
-            &mut data.render_object.pipeline_layout,
-            data.render_object.descriptor_set_layout,
-            data.render_object.render_pass,
+            &mut data.pipeline,
+            &mut data.pipeline_layout,
+            data.descriptor_set_layout,
+            data.render_pass,
             data.swapchain_extent,
             data.msaa_samples,
         )?;
+        // create_pipeline_2d(
+        //     &device,
+        //     &mut data.pipeline,
+        //     &mut data.pipeline_layout,
+        //     data.descriptor_set_layout,
+        //     data.render_pass,
+        //     data.swapchain_extent,
+        //     data.msaa_samples,
+        // )?;
 
         create_command_pool(
             &instance,
@@ -256,34 +260,34 @@ impl App {
             data.swapchain_format,
             data.msaa_samples,
         )?;
-        // create_depth_objects(
-        //     &instance,
-        //     &device,
-        //     data.physical_device,
-        //     data.swapchain_extent,
-        //     data.msaa_samples,
-        //     &mut data.depth_image,
-        //     &mut data.depth_image_memory,
-        //     &mut data.depth_image_view,
-        // )?;
+        create_depth_objects(
+            &instance,
+            &device,
+            data.physical_device,
+            data.swapchain_extent,
+            data.msaa_samples,
+            &mut data.depth_image,
+            &mut data.depth_image_memory,
+            &mut data.depth_image_view,
+        )?;
 
-        // create_framebuffers(
-        //     &device,
-        //     &data.swapchain_image_views,
-        //     data.color_image_view,
-        //     data.depth_image_view,
-        //     data.swapchain_extent,
-        //     data.render_object.render_pass,
-        //     &mut data.framebuffers,
-        // )?;
-        create_framebuffers_2d(
+        create_framebuffers(
             &device,
             &data.swapchain_image_views,
             data.color_image_view,
+            data.depth_image_view,
             data.swapchain_extent,
-            data.render_object.render_pass,
+            data.render_pass,
             &mut data.framebuffers,
         )?;
+        // create_framebuffers_2d(
+        //     &device,
+        //     &data.swapchain_image_views,
+        //     data.color_image_view,
+        //     data.swapchain_extent,
+        //     data.render_pass,
+        //     &mut data.framebuffers,
+        // )?;
 
         create_texture_image(
             &instance,
@@ -307,37 +311,37 @@ impl App {
             &mut data.texture_sampler,
         )?;
 
-        // load_model(&mut data.vertices, &mut data.indices)?;
-        create_vertices_2d(&mut data.vertices_2d, &mut data.indices)?;
+        load_model(&mut data.vertices, &mut data.indices)?;
+        // create_vertices_2d(&mut data.vertices_2d, &mut data.indices)?;
 
-        // create_vertex_buffer(
-        //     &instance,
-        //     &device,
-        //     data.physical_device,
-        //     data.graphics_queue,
-        //     data.command_pool,
-        //     &data.vertices,
-        //     &mut data.render_object.vertex_buffer,
-        //     &mut data.render_object.vertex_buffer_memory,
-        // )?;
-        create_vertex_buffer_2d(
+        create_vertex_buffer(
             &instance,
             &device,
             data.physical_device,
             data.graphics_queue,
             data.command_pool,
-            &data.vertices_2d,
-            &mut data.render_object.vertex_buffer,
-            &mut data.render_object.vertex_buffer_memory,
+            &data.vertices,
+            &mut data.vertex_buffer,
+            &mut data.vertex_buffer_memory,
         )?;
+        // create_vertex_buffer_2d(
+        //     &instance,
+        //     &device,
+        //     data.physical_device,
+        //     data.graphics_queue,
+        //     data.command_pool,
+        //     &data.vertices_2d,
+        //     &mut data.vertex_buffer,
+        //     &mut data.vertex_buffer_memory,
+        // )?;
         create_index_buffer(
             &instance,
             &device,
             data.graphics_queue,
             data.physical_device,
             &data.indices,
-            &mut data.render_object.index_buffer,
-            &mut data.render_object.index_buffer_memory,
+            &mut data.index_buffer,
+            &mut data.index_buffer_memory,
             data.command_pool,
         )?;
 
@@ -345,8 +349,8 @@ impl App {
             &instance,
             &device,
             &data.swapchain_images,
-            &mut data.render_object.uniform_buffers,
-            &mut data.render_object.uniform_buffers_memory,
+            &mut data.uniform_buffers,
+            &mut data.uniform_buffers_memory,
             data.physical_device,
         )?;
         create_descriptor_pool(
@@ -355,55 +359,55 @@ impl App {
             &mut data.descriptor_pool,
         )?;
 
-        // create_descriptor_sets(
-        //     &device,
-        //     data.swapchain_images.len(),
-        //     data.descriptor_pool,
-        //     data.render_object.descriptor_set_layout,
-        //     &data.render_object.uniform_buffers,
-        //     data.texture_image_view,
-        //     data.texture_sampler,
-        //     &mut data.descriptor_sets,
-        // )?;
-        create_descriptor_sets_2d(
+        create_descriptor_sets(
             &device,
             data.swapchain_images.len(),
             data.descriptor_pool,
-            data.render_object.descriptor_set_layout,
-            &data.render_object.uniform_buffers,
+            data.descriptor_set_layout,
+            &data.uniform_buffers,
             data.texture_image_view,
             data.texture_sampler,
             &mut data.descriptor_sets,
         )?;
-
-        // create_command_buffers(
+        // create_descriptor_sets_2d(
         //     &device,
-        //     data.command_pool,
-        //     &data.framebuffers,
-        //     data.render_object.render_pass,
-        //     data.render_object.pipeline,
-        //     data.render_object.pipeline_layout,
-        //     data.render_object.vertex_buffer,
-        //     data.render_object.index_buffer,
-        //     &data.indices,
-        //     data.swapchain_extent,
-        //     &data.descriptor_sets,
-        //     &mut data.render_object.command_buffers,
+        //     data.swapchain_images.len(),
+        //     data.descriptor_pool,
+        //     data.descriptor_set_layout,
+        //     &data.uniform_buffers,
+        //     data.texture_image_view,
+        //     data.texture_sampler,
+        //     &mut data.descriptor_sets,
         // )?;
-        create_command_buffers_2d(
+
+        create_command_buffers(
             &device,
             data.command_pool,
             &data.framebuffers,
-            data.render_object.render_pass,
-            data.render_object.pipeline,
-            data.render_object.pipeline_layout,
-            data.render_object.vertex_buffer,
-            data.render_object.index_buffer,
+            data.render_pass,
+            data.pipeline,
+            data.pipeline_layout,
+            data.vertex_buffer,
+            data.index_buffer,
             &data.indices,
             data.swapchain_extent,
             &data.descriptor_sets,
-            &mut data.render_object.command_buffers,
+            &mut data.command_buffers,
         )?;
+        // create_command_buffers_2d(
+        //     &device,
+        //     data.command_pool,
+        //     &data.framebuffers,
+        //     data.render_pass,
+        //     data.pipeline,
+        //     data.pipeline_layout,
+        //     data.vertex_buffer,
+        //     data.index_buffer,
+        //     &data.indices,
+        //     data.swapchain_extent,
+        //     &data.descriptor_sets,
+        //     &mut data.command_buffers,
+        // )?;
 
         create_sync_objects(
             &device,
@@ -463,8 +467,7 @@ impl App {
         // Copy
 
         let memory = self.device.map_memory(
-            self.data.render_object.uniform_buffers_memory
-                [image_index],
+            self.data.uniform_buffers_memory[image_index],
             0,
             size_of::<UniformBufferObject>() as u64,
             vk::MemoryMapFlags::empty(),
@@ -473,8 +476,7 @@ impl App {
         memcpy(&ubo, memory.cast(), 1);
 
         self.device.unmap_memory(
-            self.data.render_object.uniform_buffers_memory
-                [image_index],
+            self.data.uniform_buffers_memory[image_index],
         );
 
         Ok(())
@@ -507,40 +509,40 @@ impl App {
             data.swapchain_format,
             &mut data.swapchain_image_views,
         )?;
-        // create_render_pass(
-        //     &instance,
-        //     &device,
-        //     data.physical_device,
-        //     data.swapchain_format,
-        //     data.msaa_samples,
-        //     &mut data.render_object.render_pass,
-        // )?;
-        create_render_pass_2d(
+        create_render_pass(
             &instance,
             &device,
+            data.physical_device,
             data.swapchain_format,
             data.msaa_samples,
-            &mut data.render_object.render_pass,
+            &mut data.render_pass,
         )?;
-
-        // create_pipeline(
+        // create_render_pass_2d(
+        //     &instance,
         //     &device,
-        //     &mut data.render_object.pipeline,
-        //     &mut data.render_object.pipeline_layout,
-        //     data.render_object.descriptor_set_layout,
-        //     data.render_object.render_pass,
-        //     data.swapchain_extent,
+        //     data.swapchain_format,
         //     data.msaa_samples,
+        //     &mut data.render_pass,
         // )?;
-        create_pipeline_2d(
+
+        create_pipeline(
             &device,
-            &mut data.render_object.pipeline,
-            &mut data.render_object.pipeline_layout,
-            data.render_object.descriptor_set_layout,
-            data.render_object.render_pass,
+            &mut data.pipeline,
+            &mut data.pipeline_layout,
+            data.descriptor_set_layout,
+            data.render_pass,
             data.swapchain_extent,
             data.msaa_samples,
         )?;
+        // create_pipeline_2d(
+        //     &device,
+        //     &mut data.pipeline,
+        //     &mut data.pipeline_layout,
+        //     data.descriptor_set_layout,
+        //     data.render_pass,
+        //     data.swapchain_extent,
+        //     data.msaa_samples,
+        // )?;
 
         create_color_objects(
             &instance,
@@ -553,41 +555,41 @@ impl App {
             data.swapchain_format,
             data.msaa_samples,
         )?;
-        // create_depth_objects(
-        //     &instance,
-        //     &device,
-        //     data.physical_device,
-        //     data.swapchain_extent,
-        //     data.msaa_samples,
-        //     &mut data.depth_image,
-        //     &mut data.depth_image_memory,
-        //     &mut data.depth_image_view,
-        // )?;
+        create_depth_objects(
+            &instance,
+            &device,
+            data.physical_device,
+            data.swapchain_extent,
+            data.msaa_samples,
+            &mut data.depth_image,
+            &mut data.depth_image_memory,
+            &mut data.depth_image_view,
+        )?;
 
-        // create_framebuffers(
-        //     &device,
-        //     &data.swapchain_image_views,
-        //     data.color_image_view,
-        //     data.depth_image_view,
-        //     data.swapchain_extent,
-        //     data.render_object.render_pass,
-        //     &mut data.framebuffers,
-        // )?;
-        create_framebuffers_2d(
+        create_framebuffers(
             &device,
             &data.swapchain_image_views,
             data.color_image_view,
+            data.depth_image_view,
             data.swapchain_extent,
-            data.render_object.render_pass,
+            data.render_pass,
             &mut data.framebuffers,
         )?;
+        // create_framebuffers_2d(
+        //     &device,
+        //     &data.swapchain_image_views,
+        //     data.color_image_view,
+        //     data.swapchain_extent,
+        //     data.render_pass,
+        //     &mut data.framebuffers,
+        // )?;
 
         create_uniform_buffers(
             &instance,
             &device,
             &data.swapchain_images,
-            &mut data.render_object.uniform_buffers,
-            &mut data.render_object.uniform_buffers_memory,
+            &mut data.uniform_buffers,
+            &mut data.uniform_buffers_memory,
             data.physical_device,
         )?;
         create_descriptor_pool(
@@ -596,54 +598,39 @@ impl App {
             &mut data.descriptor_pool,
         )?;
 
-        // create_descriptor_sets(
-        //     &device,
-        //     data.swapchain_images.len(),
-        //     data.descriptor_pool,
-        //     data.render_object.descriptor_set_layout,
-        //     &data.render_object.uniform_buffers,
-        //     data.texture_image_view,
-        //     data.texture_sampler,
-        //     &mut data.descriptor_sets,
-        // )?;
-        create_descriptor_sets_2d(
+        create_descriptor_sets(
             &device,
             data.swapchain_images.len(),
             data.descriptor_pool,
-            data.render_object.descriptor_set_layout,
-            &data.render_object.uniform_buffers,
+            data.descriptor_set_layout,
+            &data.uniform_buffers,
             data.texture_image_view,
             data.texture_sampler,
             &mut data.descriptor_sets,
         )?;
-
-        // create_command_buffers(
+        // create_descriptor_sets_2d(
         //     &device,
-        //     data.command_pool,
-        //     &data.framebuffers,
-        //     data.render_object.render_pass,
-        //     data.render_object.pipeline,
-        //     data.render_object.pipeline_layout,
-        //     data.render_object.vertex_buffer,
-        //     data.render_object.index_buffer,
-        //     &data.indices,
-        //     data.swapchain_extent,
-        //     &data.descriptor_sets,
-        //     &mut data.render_object.command_buffers,
+        //     data.swapchain_images.len(),
+        //     data.descriptor_pool,
+        //     data.descriptor_set_layout,
+        //     &data.uniform_buffers,
+        //     data.texture_image_view,
+        //     data.texture_sampler,
+        //     &mut data.descriptor_sets,
         // )?;
         create_command_buffers(
             &device,
             data.command_pool,
             &data.framebuffers,
-            data.render_object.render_pass,
-            data.render_object.pipeline,
-            data.render_object.pipeline_layout,
-            data.render_object.vertex_buffer,
-            data.render_object.index_buffer,
+            data.render_pass,
+            data.pipeline,
+            data.pipeline_layout,
+            data.vertex_buffer,
+            data.index_buffer,
             &data.indices,
             data.swapchain_extent,
             &data.descriptor_sets,
-            &mut data.render_object.command_buffers,
+            &mut data.command_buffers,
         )?;
 
         Ok(())
@@ -687,10 +674,8 @@ impl App {
             &[self.data.image_available_semaphores[self.frame]];
         let wait_stages =
             &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-        let command_buffers = &[self
-            .data
-            .render_object
-            .command_buffer(image_index as usize)];
+        let command_buffers =
+            &[self.data.command_buffers[image_index as usize]];
         let signal_semaphores =
             &[self.data.render_finished_semaphores[self.frame]];
         let submit_info = vk::SubmitInfo::builder()
@@ -756,9 +741,17 @@ impl App {
             .iter()
             .for_each(|s| self.device.destroy_semaphore(*s, None));
 
-        self.data
-            .render_object
-            .destroy_static(&self.device, &self.data);
+        self.device.free_memory(self.data.index_buffer_memory, None);
+        self.device.destroy_buffer(self.data.index_buffer, None);
+
+        self.device
+            .free_memory(self.data.vertex_buffer_memory, None);
+        self.device.destroy_buffer(self.data.vertex_buffer, None);
+
+        self.device.destroy_descriptor_set_layout(
+            self.data.descriptor_set_layout,
+            None,
+        );
 
         self.device.destroy_sampler(self.data.texture_sampler, None);
         self.device
@@ -782,18 +775,30 @@ impl App {
     }
 
     unsafe fn destroy_swapchain(&mut self) {
+        self.device.free_command_buffers(
+            self.data.command_pool,
+            &self.data.command_buffers,
+        );
         self.data
-            .render_object
-            .destroy_vars(&self.device, &self.data);
+            .uniform_buffers_memory
+            .iter()
+            .for_each(|m| self.device.free_memory(*m, None));
+        self.data
+            .uniform_buffers
+            .iter()
+            .for_each(|b| self.device.destroy_buffer(*b, None));
+
+        self.device.destroy_pipeline(self.data.pipeline, None);
+        self.device
+            .destroy_pipeline_layout(self.data.pipeline_layout, None);
+        self.device.destroy_render_pass(self.data.render_pass, None);
         self.device
             .destroy_descriptor_pool(self.data.descriptor_pool, None);
-        // ! Ska antagligen ligga i render object
-        // self.device
-        //     .destroy_image_view(self.data.depth_image_view, None);
-        // self.device.free_memory(self.data.depth_image_memory, None);
-        // self.device.destroy_image(self.data.depth_image, None);
+        self.device
+            .destroy_image_view(self.data.depth_image_view, None);
+        self.device.free_memory(self.data.depth_image_memory, None);
+        self.device.destroy_image(self.data.depth_image, None);
 
-        // ! Ska antagligen ligga i render object
         self.device
             .destroy_image_view(self.data.color_image_view, None);
         self.device.free_memory(self.data.color_image_memory, None);
