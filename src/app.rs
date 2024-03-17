@@ -442,24 +442,24 @@ impl App {
         );
 
         let view = Mat4::look_at_rh(
-            point3::<f32>(2.0, 2.0, 2.0),
+            point3::<f32>(6.0, 6.0, 6.0),
             point3::<f32>(0.0, 0.0, 0.0),
             vec3(0.0, 0.0, 1.0),
         );
         let correction = Mat4::new(
             1.0, 0.0, 0.0, 0.0,
             // We're also flipping the Y-axis with this line's `-1.0`.
-            0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.5,
-            1.0,
+            0.0, -1.0, 0.0, 0.0, //
+            0.0, 0.0, 0.5, 0.0, //
+            0.0, 0.0, 0.5, 1.0,
         );
-
         let proj = correction
             * cgmath::perspective(
                 Deg(45.0),
                 self.data.swapchain_extent.width as f32
                     / self.data.swapchain_extent.height as f32,
                 0.1,
-                10.0,
+                20.0,
             );
 
         let ubo = UniformBufferObject { model, view, proj };
@@ -822,7 +822,7 @@ fn load_model(
     indices: &mut Vec<u32>,
 ) -> Result<()> {
     let mut reader = BufReader::new(
-        File::open("resources/viking_room.obj").map_err(|e| {
+        File::open("resources/fish.obj").map_err(|e| {
             AppError::FileOpenError(format!(
                 "Failed to open object with error: {}",
                 e
@@ -840,10 +840,11 @@ fn load_model(
     )?;
     let mut unique_vertices = HashMap::new();
     for model in &models {
-        for index in &model.mesh.indices {
-            let pos_offset = (3 * index) as usize;
-            let tex_coord_offset = (2 * index) as usize;
-
+        for i in 0..model.mesh.indices.len() {
+            let vert_index = model.mesh.indices[i] as usize;
+            let tex_index = model.mesh.texcoord_indices[i] as usize;
+            let pos_offset = (3 * vert_index) as usize;
+            let tex_coord_offset = (2 * tex_index) as usize;
             let vertex = Vertex3 {
                 pos: vec3(
                     model.mesh.positions[pos_offset],
