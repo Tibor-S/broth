@@ -26,7 +26,7 @@ pub unsafe fn create_texture_image(
     texture_image_memory: &mut vk::DeviceMemory,
 ) -> Result<()> {
     let image =
-        File::open("resources/viking_room.png").map_err(|e| {
+        File::open("resources/fish_albedo.png").map_err(|e| {
             TextureError::FileOpenError(
                 "resources/viking_room.png".into(),
                 e.to_string(),
@@ -39,17 +39,31 @@ pub unsafe fn create_texture_image(
     let mut pixels = vec![0; reader.info().raw_bytes()];
     reader.next_frame(&mut pixels)?;
 
-    let size = reader.info().raw_bytes() as u64;
+    let mut size = reader.info().raw_bytes() as u64;
     let (width, height) = reader.info().size();
     *mip_levels =
         (width.max(height) as f32).log2().floor() as u32 + 1;
-
-    if width != 1024
-        || height != 1024
-        || reader.info().color_type != png::ColorType::Rgba
-    {
-        return Err(TextureError::UnsupportedTextureError);
-    }
+    match reader.info().color_type {
+        png::ColorType::Rgb => {
+            log::warn!("Have to convert RGB texture image to RGBA.");
+            let mut t_pixels =
+                Vec::with_capacity(pixels.len() * 4 / 3);
+            for i in 0..(size as usize / 3) {
+                t_pixels.push(pixels[i * 3]);
+                t_pixels.push(pixels[i * 3 + 1]);
+                t_pixels.push(pixels[i * 3 + 2]);
+                t_pixels.push(u8::MAX);
+            }
+            pixels = t_pixels;
+            size = pixels.len() as u64;
+        }
+        png::ColorType::Rgba => (),
+        _ => {
+            return Err(TextureError::UnsupportedTextureError(
+                format!("{:?}", reader.info().color_type),
+            ));
+        }
+    };
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
@@ -187,12 +201,11 @@ pub enum TextureError {
     ImageViewError(#[from] ImageViewError),
     #[error(transparent)]
     BufferError(#[from] BufferError),
-
     #[error("Failed to open texture image {0} with error: {1}")]
     FileOpenError(String, String),
     #[error(
-        "Unsupported texture with wrong width, height or color type."
+        "Unsupported texture. Color type has to be R8G8B8 or R8G8B8A8."
     )]
-    UnsupportedTextureError,
+    UnsupportedTextureError(String),
 }
 type Result<T> = std::result::Result<T, TextureError>;
