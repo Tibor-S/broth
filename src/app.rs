@@ -2,8 +2,8 @@ use std::fs::File;
 use std::mem::size_of;
 
 use crate::buffer::{
-    create_index_buffer, create_uniform_buffers, BufferError, Mat4,
-    UniformBufferObject,
+    create_index_buffer, create_uniform_buffers, BufferError,
+    CameraObject, Mat3, Mat4, ModelObject,
 };
 use crate::color::{create_color_objects, ColorError};
 use crate::command::{
@@ -44,7 +44,8 @@ use crate::{
     vertex::{create_vertex_buffer, Vertex3, VertexError},
     MAX_FRAMES_IN_FLIGHT,
 };
-use cgmath::{point3, vec2, vec3, Deg};
+// use cgmath::Angle::{cos, sin};
+use cgmath::{point3, vec2, vec3, Angle, Deg, Point3, Vector3};
 use std::{
     collections::HashMap, io::BufReader,
     ptr::copy_nonoverlapping as memcpy, time::Instant,
@@ -59,7 +60,6 @@ use vulkanalia::{
     window::create_surface,
     Device, Entry, Instance,
 };
-
 use winit::window::Window;
 
 #[derive(Debug, Error)]
@@ -108,6 +108,10 @@ pub struct App {
     pub frame: usize,
     pub resized: bool,
     pub start: Instant,
+    pub camera_direction: Vector3<f32>,
+    pub camera_alt_direction: Vector3<f32>,
+    pub camera_up_direction: Vector3<f32>,
+    pub camera_position: Point3<f32>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -156,8 +160,10 @@ pub struct AppData {
     pub vertex_buffer_memory: vk::DeviceMemory,
     pub index_buffer: vk::Buffer,
     pub index_buffer_memory: vk::DeviceMemory,
-    pub uniform_buffers: Vec<vk::Buffer>,
-    pub uniform_buffers_memory: Vec<vk::DeviceMemory>,
+    pub camera_buffers: Vec<vk::Buffer>,
+    pub camera_buffers_memory: Vec<vk::DeviceMemory>,
+    pub model_buffers: Vec<vk::Buffer>,
+    pub model_buffers_memory: Vec<vk::DeviceMemory>,
 }
 
 impl App {
@@ -221,6 +227,7 @@ impl App {
         create_descriptor_set_layout(
             &device,
             &mut data.descriptor_set_layout,
+            2,
         )?;
 
         create_pipeline(
@@ -349,13 +356,16 @@ impl App {
             &instance,
             &device,
             &data.swapchain_images,
-            &mut data.uniform_buffers,
-            &mut data.uniform_buffers_memory,
             data.physical_device,
+            &mut data.camera_buffers,
+            &mut data.camera_buffers_memory,
+            &mut data.model_buffers,
+            &mut data.model_buffers_memory,
         )?;
         create_descriptor_pool(
             &device,
             data.swapchain_images.len() as u32,
+            2,
             &mut data.descriptor_pool,
         )?;
 
@@ -364,7 +374,8 @@ impl App {
             data.swapchain_images.len(),
             data.descriptor_pool,
             data.descriptor_set_layout,
-            &data.uniform_buffers,
+            &data.camera_buffers,
+            &data.model_buffers,
             data.texture_image_view,
             data.texture_sampler,
             &mut data.descriptor_sets,
@@ -425,6 +436,10 @@ impl App {
             frame: 0,
             resized: false,
             start: Instant::now(),
+            camera_direction: vec3(1.0, 0.0, 0.0),
+            camera_alt_direction: vec3(0.0, 1.0, 0.0),
+            camera_up_direction: vec3(0.0, 0.0, 1.0),
+            camera_position: point3(1.0, 1.0, 1.0),
         })
     }
 
@@ -432,8 +447,6 @@ impl App {
         &self,
         image_index: usize,
     ) -> Result<()> {
-        // MVP
-
         let time = self.start.elapsed().as_secs_f32();
 
         let model = Mat4::from_axis_angle(
@@ -442,8 +455,8 @@ impl App {
         );
 
         let view = Mat4::look_at_rh(
-            point3::<f32>(6.0, 6.0, 6.0),
-            point3::<f32>(0.0, 0.0, 0.0),
+            self.camera_position,
+            self.camera_position + self.camera_direction,
             vec3(0.0, 0.0, 1.0),
         );
         let correction = Mat4::new(
@@ -453,30 +466,43 @@ impl App {
             0.0, 0.0, 0.5, 0.0, //
             0.0, 0.0, 0.5, 1.0,
         );
-        let proj = correction
-            * cgmath::perspective(
-                Deg(45.0),
-                self.data.swapchain_extent.width as f32
-                    / self.data.swapchain_extent.height as f32,
-                0.1,
-                20.0,
-            );
+        let proj = cgmath::perspective(
+            Deg(45.0),
+            self.data.swapchain_extent.width as f32
+                / self.data.swapchain_extent.height as f32,
+            0.1,
+            20.0,
+        );
 
-        let ubo = UniformBufferObject { model, view, proj };
+        let camera_obj = CameraObject {
+            view,
+            proj,
+            correction,
+        };
 
-        // Copy
+        let model_obj = ModelObject { model };
 
-        let memory = self.device.map_memory(
-            self.data.uniform_buffers_memory[image_index],
+        let camera_memory = self.device.map_memory(
+            self.data.camera_buffers_memory[image_index],
             0,
-            size_of::<UniformBufferObject>() as u64,
+            size_of::<CameraObject>() as u64,
+            vk::MemoryMapFlags::empty(),
+        )?;
+        let model_memory = self.device.map_memory(
+            self.data.model_buffers_memory[image_index],
+            0,
+            size_of::<ModelObject>() as u64,
             vk::MemoryMapFlags::empty(),
         )?;
 
-        memcpy(&ubo, memory.cast(), 1);
+        memcpy(&camera_obj, camera_memory.cast(), 1);
+        memcpy(&model_obj, model_memory.cast(), 1);
 
         self.device.unmap_memory(
-            self.data.uniform_buffers_memory[image_index],
+            self.data.camera_buffers_memory[image_index],
+        );
+        self.device.unmap_memory(
+            self.data.model_buffers_memory[image_index],
         );
 
         Ok(())
@@ -588,13 +614,16 @@ impl App {
             &instance,
             &device,
             &data.swapchain_images,
-            &mut data.uniform_buffers,
-            &mut data.uniform_buffers_memory,
             data.physical_device,
+            &mut data.camera_buffers,
+            &mut data.camera_buffers_memory,
+            &mut data.model_buffers,
+            &mut data.model_buffers_memory,
         )?;
         create_descriptor_pool(
             &device,
             data.swapchain_images.len() as u32,
+            2,
             &mut data.descriptor_pool,
         )?;
 
@@ -603,7 +632,8 @@ impl App {
             data.swapchain_images.len(),
             data.descriptor_pool,
             data.descriptor_set_layout,
-            &data.uniform_buffers,
+            &data.camera_buffers,
+            &data.model_buffers,
             data.texture_image_view,
             data.texture_sampler,
             &mut data.descriptor_sets,
@@ -780,11 +810,19 @@ impl App {
             &self.data.command_buffers,
         );
         self.data
-            .uniform_buffers_memory
+            .camera_buffers_memory
             .iter()
             .for_each(|m| self.device.free_memory(*m, None));
         self.data
-            .uniform_buffers
+            .camera_buffers
+            .iter()
+            .for_each(|b| self.device.destroy_buffer(*b, None));
+        self.data
+            .model_buffers_memory
+            .iter()
+            .for_each(|m| self.device.free_memory(*m, None));
+        self.data
+            .model_buffers
             .iter()
             .for_each(|b| self.device.destroy_buffer(*b, None));
 
@@ -814,6 +852,55 @@ impl App {
             .iter()
             .for_each(|v| self.device.destroy_image_view(*v, None));
         self.device.destroy_swapchain_khr(self.data.swapchain, None);
+    }
+
+    pub fn rotate_camera(
+        &mut self,
+        x_axis: Deg<f32>,
+        y_axis: Deg<f32>,
+        z_axis: Deg<f32>,
+    ) {
+        let rotation = Mat3::new(
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            x_axis.cos(),
+            -x_axis.sin(),
+            0.0,
+            x_axis.sin(),
+            x_axis.cos(),
+        ) * Mat3::new(
+            y_axis.cos(),
+            0.0,
+            y_axis.sin(),
+            0.0,
+            1.0,
+            0.0,
+            -y_axis.sin(),
+            0.0,
+            y_axis.cos(),
+        ) * Mat3::new(
+            z_axis.cos(),
+            -z_axis.sin(),
+            0.0,
+            z_axis.sin(),
+            z_axis.cos(),
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        );
+        self.camera_direction = rotation * self.camera_direction;
+        self.camera_alt_direction =
+            rotation * self.camera_alt_direction;
+        self.camera_up_direction =
+            rotation * self.camera_up_direction;
+    }
+
+    pub fn move_camera(&mut self, forward: f32, sideways: f32) {
+        self.camera_position += forward * self.camera_direction;
+        self.camera_position += sideways * self.camera_alt_direction;
     }
 }
 

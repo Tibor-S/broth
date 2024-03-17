@@ -14,6 +14,7 @@ use crate::{
     memory::{get_memory_type_index, MemoryError},
 };
 
+pub type Mat3 = cgmath::Matrix3<f32>;
 pub type Mat4 = cgmath::Matrix4<f32>;
 
 pub unsafe fn create_buffer(
@@ -54,26 +55,41 @@ pub unsafe fn create_uniform_buffers(
     instance: &Instance,
     device: &Device,
     swapchain_images: &[vk::Image],
-    uniform_buffers: &mut Vec<vk::Buffer>,
-    uniform_buffers_memory: &mut Vec<vk::DeviceMemory>,
     physical_device: vk::PhysicalDevice,
+    camera_buffers: &mut Vec<vk::Buffer>,
+    camera_buffers_memory: &mut Vec<vk::DeviceMemory>,
+    model_buffers: &mut Vec<vk::Buffer>,
+    model_buffers_memory: &mut Vec<vk::DeviceMemory>,
 ) -> Result<()> {
-    uniform_buffers.clear();
-    uniform_buffers_memory.clear();
+    camera_buffers.clear();
+    model_buffers.clear();
+    camera_buffers_memory.clear();
+    model_buffers_memory.clear();
 
     for _ in 0..swapchain_images.len() {
-        let (uniform_buffer, uniform_buffer_memory) = create_buffer(
+        let (camera_buffer, camera_buffer_memory) = create_buffer(
             instance,
             device,
             physical_device,
-            size_of::<UniformBufferObject>() as u64,
+            size_of::<CameraObject>() as u64,
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+            vk::MemoryPropertyFlags::HOST_COHERENT
+                | vk::MemoryPropertyFlags::HOST_VISIBLE,
+        )?;
+        let (model_buffer, model_buffer_memory) = create_buffer(
+            instance,
+            device,
+            physical_device,
+            size_of::<ModelObject>() as u64,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
             vk::MemoryPropertyFlags::HOST_COHERENT
                 | vk::MemoryPropertyFlags::HOST_VISIBLE,
         )?;
 
-        uniform_buffers.push(uniform_buffer);
-        uniform_buffers_memory.push(uniform_buffer_memory);
+        camera_buffers.push(camera_buffer);
+        model_buffers.push(model_buffer);
+        camera_buffers_memory.push(camera_buffer_memory);
+        model_buffers_memory.push(model_buffer_memory);
     }
 
     Ok(())
@@ -81,10 +97,16 @@ pub unsafe fn create_uniform_buffers(
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
-pub struct UniformBufferObject {
-    pub model: Mat4,
+pub struct CameraObject {
     pub view: Mat4,
     pub proj: Mat4,
+    pub correction: Mat4,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct ModelObject {
+    pub model: Mat4,
 }
 
 pub unsafe fn create_index_buffer(

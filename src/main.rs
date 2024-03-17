@@ -17,13 +17,16 @@ mod validation;
 mod vertex;
 
 use app::{App, AppError};
+use cgmath::Deg;
 use thiserror::Error;
 use vulkanalia::{vk, Version};
 use winit::{
     dpi::LogicalSize,
     error::{EventLoopError, OsError},
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
+    keyboard::{Key, NamedKey},
+    platform::modifier_supplement::KeyEventExtModifierSupplement,
     window::WindowBuilder,
 };
 
@@ -77,6 +80,28 @@ fn main_f() -> Result<()> {
             // Render a frame if our Vulkan app is not being destroyed.
             Event::AboutToWait if !destroying && !minimized => {
                 unsafe { app.render(&window) }.unwrap();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::KeyboardInput { event, .. },
+                ..
+            } if event.state == ElementState::Pressed
+                && !event.repeat =>
+            {
+                match event.key_without_modifiers().as_ref() {
+                    Key::Named(NamedKey::ArrowLeft) => app
+                        .rotate_camera(
+                            Deg(0.0),
+                            Deg(0.0),
+                            Deg(-30.0),
+                        ),
+                    Key::Named(NamedKey::ArrowRight) => app
+                        .rotate_camera(Deg(0.0), Deg(0.0), Deg(30.0)),
+                    Key::Character("w") => app.move_camera(1.0, 0.0),
+                    Key::Character("s") => app.move_camera(-1.0, 0.0),
+                    Key::Character("d") => app.move_camera(0.0, -1.0),
+                    Key::Character("a") => app.move_camera(0.0, 1.0),
+                    _ => {}
+                }
             }
             // Destroy our Vulkan app.
             Event::WindowEvent {
